@@ -1,50 +1,84 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import React, { useState } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { CssBaseline, Box, Typography, Card, CardContent } from '@mui/material';
+import Sidebar from './components/Sidebar';
+import ModelsPage from './components/ModelsPage';
+import DownloadsPage from './components/DownloadsPage';
+import SettingsDialog from './components/SettingsDialog';
+import NotificationSnackbar from './components/NotificationSnackbar';
+import useDownloadedModels from './hooks/useDownloadedModels';
+import useAppStore from './store/useAppStore';
+
+const theme = createTheme({
+  palette: {
+    mode: 'light',
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+  },
+});
+
+// Import ChatPage component
+import ChatPage from './components/ChatPage';
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [currentPage, setCurrentPage] = useState('models');
+  const { sidebarCollapsed, setSidebarCollapsed } = useAppStore();
+  
+  // Initialize downloaded models check and progress listening
+  useDownloadedModels();
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'chat':
+        return <ChatPage />;
+      case 'models':
+        return <ModelsPage />;
+      case 'downloads':
+        return <DownloadsPage />;
+      default:
+        return <ModelsPage />;
+    }
+  };
+  
+  const DRAWER_WIDTH = 240;
+  const DRAWER_WIDTH_COLLAPSED = 64;
+  const drawerWidth = sidebarCollapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+        <Sidebar 
+          currentPage={currentPage} 
+          onPageChange={setCurrentPage}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+        
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            p: 4,
+            width: { sm: `calc(100% - ${drawerWidth}px)` },
+            backgroundColor: 'background.default',
+            transition: theme.transitions.create('width', {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.leavingScreen,
+            }),
+          }}
+        >
+          {renderPage()}
+        </Box>
+        
+        <SettingsDialog />
+        <NotificationSnackbar />
+      </Box>
+    </ThemeProvider>
   );
 }
 
