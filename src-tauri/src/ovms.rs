@@ -7,7 +7,7 @@ use zip::ZipArchive;
 use openai::chat::{ChatCompletion, ChatCompletionMessage, ChatCompletionMessageRole};
 use openai::Credentials;
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 const OVMS_DOWNLOAD_URL: &str = "https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_windows_python_off.zip";
 const OVMS_ZIP_FILE: &str = "ovms_windows_python_off.zip";
@@ -179,6 +179,16 @@ pub async fn download_ovms(app_handle: AppHandle) -> Result<String, String> {
     // Extract the zip file to ovms directory
     extract_ovms(&zip_path, &ovms_dir)?;
 
+    // Clean up the zip file after successful extraction
+    if zip_path.exists() {
+        if let Err(e) = fs::remove_file(&zip_path) {
+            println!("Warning: Failed to remove zip file {}: {}", zip_path.display(), e);
+            // Don't fail the entire operation if cleanup fails
+        } else {
+            println!("Successfully cleaned up zip file: {}", zip_path.display());
+        }
+    }
+
     Ok("OVMS downloaded and extracted successfully".to_string())
 }
 
@@ -194,7 +204,6 @@ pub fn extract_ovms(zip_path: &PathBuf, extract_to: &PathBuf) -> Result<(), Stri
             .map_err(|e| format!("Failed to read file from archive: {}", e))?;
         
         let file_name = file.name();
-        println!("Processing archive file: {}", file_name);
         
         // Skip directories (they end with '/')
         if file_name.ends_with('/') {
@@ -216,8 +225,6 @@ pub fn extract_ovms(zip_path: &PathBuf, extract_to: &PathBuf) -> Result<(), Stri
         
         let outpath = extract_to.join(relative_path);
         
-        println!("Extracting: {} -> {}", file_name, outpath.display());
-
         // Create parent directories if needed
         if let Some(p) = outpath.parent() {
             if !p.exists() {
@@ -584,27 +591,16 @@ pub async fn stop_ovms() -> Result<String, String> {
     Ok("OVMS server stopped".to_string())
 }
 
-// Check if OVMS is present on the system
+// Check if OVMS is present on the system (Tauri command)
+#[tauri::command]
+pub async fn check_ovms_present(app_handle: AppHandle) -> Result<bool, String> {
+    Ok(is_ovms_present(Some(&app_handle)))
+}
+
+// Check if OVMS is present on the system (internal function)
 pub fn is_ovms_present(app_handle: Option<&AppHandle>) -> bool {
     let ovms_exe = get_ovms_exe_path(app_handle);
     println!("Checking for OVMS at: {}", ovms_exe.display());
-    
-    // Also list what's actually in the OVMS directory for debugging
-    let ovms_dir = get_ovms_dir(app_handle);
-    if ovms_dir.exists() {
-        println!("OVMS directory contents:");
-        if let Ok(entries) = fs::read_dir(&ovms_dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    println!("  {}", entry.path().display());
-                }
-            }
-        } else {
-            println!("Failed to list OVMS directory contents");
-        }
-    } else {
-        println!("OVMS directory does not exist: {}", ovms_dir.display());
-    }
     
     ovms_exe.exists() && ovms_exe.is_file()
 }
@@ -774,36 +770,6 @@ pub async fn debug_ovms_paths(app_handle: AppHandle) -> Result<String, String> {
     Ok(debug_info.join("\n"))
 }
 
-// Clean up existing OVMS installation for testing
-#[tauri::command]
-pub async fn clean_ovms_installation(app_handle: AppHandle) -> Result<String, String> {
-    let sparrow_dir = get_sparrow_dir(Some(&app_handle));
-    let ovms_dir = get_ovms_dir(Some(&app_handle));
-    let zip_path = sparrow_dir.join(OVMS_ZIP_FILE);
-    
-    let mut cleaned = Vec::new();
-    
-    // Remove zip file if it exists
-    if zip_path.exists() {
-        fs::remove_file(&zip_path)
-            .map_err(|e| format!("Failed to remove zip file: {}", e))?;
-        cleaned.push(format!("Removed zip file: {}", zip_path.display()));
-    }
-    
-    // Remove ovms directory if it exists
-    if ovms_dir.exists() {
-        fs::remove_dir_all(&ovms_dir)
-            .map_err(|e| format!("Failed to remove OVMS directory: {}", e))?;
-        cleaned.push(format!("Removed OVMS directory: {}", ovms_dir.display()));
-    }
-    
-    if cleaned.is_empty() {
-        Ok("No OVMS files found to clean".to_string())
-    } else {
-        Ok(format!("Cleaned up OVMS installation:\n{}", cleaned.join("\n")))
-    }
-}
-
 // Load a model into OVMS
 #[tauri::command]
 pub async fn load_model(app_handle: AppHandle, model_id: String) -> Result<String, String> {
@@ -950,6 +916,103 @@ pub async fn chat_with_loaded_model(message: String) -> Result<String, String> {
     } else {
         Err(format!("No choices in response. Full response: {:#?}", chat_completion))
     }
+}
+
+// Chat with the currently loaded model using streaming
+#[tauri::command]
+pub async fn chat_with_loaded_model_streaming(message: String, app: AppHandle) -> Result<String, String> {
+    // Check if a model is loaded and get its name
+    let loaded_model_mutex = LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
+    let model_name = {
+        let loaded_model_guard = loaded_model_mutex.lock().unwrap();
+        if loaded_model_guard.is_none() {
+            return Err("No model is currently loaded. Please load a model first.".to_string());
+        }
+        let model_id = loaded_model_guard.as_ref().unwrap();
+        model_id.split('/').next_back().unwrap_or(model_id).to_string()
+    };
+    
+    println!("Using streaming model: {}", model_name);
+    
+    // Create the messages vector
+    let messages = vec![
+        ChatCompletionMessage {
+            role: ChatCompletionMessageRole::System,
+            content: Some("You're an AI assistant that provides helpful responses.".to_string()),
+            ..Default::default()
+        },
+        ChatCompletionMessage {
+            role: ChatCompletionMessageRole::User,
+            content: Some(message.clone()),
+            ..Default::default()
+        }
+    ];
+
+    println!("Sending streaming message: {}", message);
+    
+    let credentials = Credentials::new("unused", "http://localhost:8000/v3");
+    
+    // Create streaming chat completion
+    let mut chat_stream = ChatCompletion::builder(&model_name, messages.clone())
+        .credentials(credentials)
+        .stream(true) // Enable streaming
+        .create_stream()
+        .await
+        .map_err(|e| format!("Failed to create chat stream: {}", e))?;
+
+    let mut full_response = String::new();
+    
+    // Process streaming responses using recv() method for Receiver
+    loop {
+        match chat_stream.recv().await {
+            Some(response) => {
+                let mut should_finish = false;
+                
+                if let Some(choice) = response.choices.first() {
+                    let delta = &choice.delta;
+                    if let Some(content) = &delta.content {
+                        println!("Streaming token: '{}'", content); // Debug log
+                        
+                        // Always emit tokens (remove duplicate filtering to debug)
+                        println!("Emitting token to frontend: '{}'", content);
+                        let emit_result = app.emit("chat-token", serde_json::json!({
+                            "token": content,
+                            "finished": false
+                        }));
+                        
+                        if let Err(e) = emit_result {
+                            println!("Failed to emit token: {}", e);
+                        }
+                        
+                        full_response.push_str(content);
+                    }
+                    
+                    // Check if this is the last chunk AFTER processing content
+                    if choice.finish_reason.is_some() {
+                        println!("Received finish_reason: {:?}", choice.finish_reason);
+                        should_finish = true;
+                    }
+                }
+                
+                if should_finish {
+                    break;
+                }
+            }
+            None => {
+                // Stream ended
+                break;
+            }
+        }
+    }
+    
+    // Emit completion signal
+    let _ = app.emit("chat-token", serde_json::json!({
+        "token": "",
+        "finished": true
+    }));
+    
+    println!("Streaming completed. Full response: {}", full_response);
+    Ok(full_response)
 }
 
 #[tauri::command]

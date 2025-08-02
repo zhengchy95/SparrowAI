@@ -60,6 +60,8 @@ async fn download_single_file(
     model_id: &str,
     file_index: usize,
     total_files: usize,
+    total_downloaded_so_far: u64,
+    total_estimated_size: u64,
     app: &tauri::AppHandle
 ) -> Result<u64, String> {
     use futures::StreamExt;
@@ -112,20 +114,28 @@ async fn download_single_file(
                 0
             };
 
-            let overall_progress = ((((file_index - 1) as f64) / (total_files as f64)) * 100.0 +
-                (file_progress as f64) / (total_files as f64)) as u32;
+            // Calculate overall progress based on total downloaded bytes across all files
+            let total_downloaded_bytes = total_downloaded_so_far + downloaded;
+            let overall_progress = if total_estimated_size > 0 {
+                ((total_downloaded_bytes as f64 / total_estimated_size as f64) * 100.0) as u32
+            } else {
+                // Fallback to file-based progress if no size info
+                ((file_index as f64 / total_files as f64) * 100.0) as u32
+            };
 
             let _ = app.emit(
                 "download-progress",
                 serde_json::json!({
                 "modelId": model_id,
-                "progress": overall_progress,
+                "progress": overall_progress.min(100), // Cap at 100%
                 "currentFile": file_info.path,
                 "fileIndex": file_index,
                 "totalFiles": total_files,
                 "fileProgress": file_progress,
-                "downloadedBytes": downloaded,
-                "totalBytes": content_length
+                "downloadedBytes": total_downloaded_bytes,
+                "totalBytes": total_estimated_size,
+                "currentFileDownloaded": downloaded,
+                "currentFileTotal": content_length
             })
             );
 
@@ -435,7 +445,7 @@ async fn download_entire_model(
 
     let mut downloaded_files = Vec::new();
     let mut errors = Vec::new();
-    let mut total_size = 0u64;
+    let mut total_downloaded_size = 0u64;
 
     // Filter to only download actual files (not directories)
     let mut downloadable_files: Vec<&HfFileInfo> = files
@@ -482,19 +492,6 @@ async fn download_entire_model(
             file_info.size.map_or("unknown size".to_string(), |s| format!("{} bytes", s))
         );
 
-        // Emit progress event
-        let progress = ((((index + 1) as f64) / (total_files as f64)) * 100.0) as u32;
-        let _ = app.emit(
-            "download-progress",
-            serde_json::json!({
-            "modelId": normalized_model_id,
-            "progress": progress,
-            "currentFile": file_info.path,
-            "fileIndex": index + 1,
-            "totalFiles": total_files
-        })
-        );
-
         // Add error recovery wrapper
         let download_result = download_single_file(
             &client,
@@ -504,13 +501,15 @@ async fn download_entire_model(
             &normalized_model_id,
             index + 1,
             total_files,
+            total_downloaded_size,
+            total_estimated_size,
             &app
         ).await;
 
         match download_result {
             Ok(file_size) => {
                 downloaded_files.push(file_info.path.clone());
-                total_size += file_size;
+                total_downloaded_size += file_size;
                 println!("✓ Downloaded: {} ({} bytes)", file_info.path, file_size);
             }
             Err(e) => {
@@ -533,7 +532,7 @@ async fn download_entire_model(
         return Err(format!("Failed to download model files. {}", error_details));
     }
 
-    let total_size_mb = (total_size as f64) / (1024.0 * 1024.0);
+    let total_size_mb = (total_downloaded_size as f64) / (1024.0 * 1024.0);
     let success_msg = format!(
         "Successfully downloaded {} files ({:.2} MB) to:\n{}\n\nDownloaded files:\n• {}",
         downloaded_files.len(),
@@ -806,6 +805,7 @@ pub fn run() {
                 open_model_folder,
                 get_default_download_path,
                 ovms::download_ovms,
+                ovms::check_ovms_present,
                 ovms::run_ovms,
                 ovms::stop_ovms,
                 ovms::chat_with_ovms,
@@ -815,11 +815,11 @@ pub fn run() {
                 ovms::run_ovms_with_config,
                 ovms::download_ovms_model,
                 ovms::debug_ovms_paths,
-                ovms::clean_ovms_installation,
                 ovms::load_model,
                 ovms::unload_model,
                 ovms::get_loaded_model,
                 ovms::chat_with_loaded_model,
+                ovms::chat_with_loaded_model_streaming,
                 ovms::check_ovms_status,
                 ovms::get_ovms_model_metadata,
                 tests::test_openvino_search,

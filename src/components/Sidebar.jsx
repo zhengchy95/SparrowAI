@@ -44,13 +44,7 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
       id: 'models',
       label: 'Models',
       icon: <SearchIcon />,
-      description: 'Search & Download Models',
-    },
-    {
-      id: 'downloads',
-      label: 'Downloads',
-      icon: <DownloadIcon />,
-      description: 'Manage Downloaded Models',
+      description: 'Search & Manage Models',
       badge: downloadedModels.size > 0 ? downloadedModels.size : null,
     },
   ];
