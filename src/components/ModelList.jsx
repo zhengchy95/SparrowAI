@@ -32,7 +32,6 @@ const ModelCard = ({ model }) => {
     addDownloadedModel,
     removeDownloadedModel,
     getDownloadProgress,
-    settings, 
     showNotification 
   } = useAppStore();
   
@@ -45,22 +44,10 @@ const ModelCard = ({ model }) => {
     showNotification(`Starting download of ${model.id}...`, 'info');
     
     try {
-      // Get the actual download path to use
-      let downloadPath = settings.downloadLocation;
-      
-      // If no custom download location is set, get the default path
-      if (!downloadPath) {
-        try {
-          downloadPath = await invoke('get_default_download_path');
-        } catch (error) {
-          console.error('Failed to get default download path:', error);
-          downloadPath = null; // Fallback to backend default
-        }
-      }
-      
+      // Always use default path (no custom download location)
       const result = await invoke('download_entire_model', {
         modelId: model.id,
-        downloadPath: downloadPath,
+        downloadPath: null, // Use default path
       });
       
       console.log('Download completed:', result);
@@ -86,22 +73,10 @@ const ModelCard = ({ model }) => {
     try {
       console.log('User confirmed deletion, proceeding...');
       
-      // Get the actual download path to use
-      let downloadPath = settings.downloadLocation;
-      
-      // If no custom download location is set, get the default path
-      if (!downloadPath) {
-        try {
-          downloadPath = await invoke('get_default_download_path');
-        } catch (error) {
-          console.error('Failed to get default download path:', error);
-          downloadPath = null; // Fallback to backend default
-        }
-      }
-      
+      // Always use default path (no custom download location)
       const result = await invoke('delete_downloaded_model', {
         modelId: model.id,
-        downloadPath: downloadPath,
+        downloadPath: null, // Use default path
       });
       
       // Only remove from UI state if backend deletion succeeded

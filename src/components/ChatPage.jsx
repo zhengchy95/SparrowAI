@@ -30,7 +30,20 @@ import {
 } from '@mui/icons-material';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import useAppStore from '../store/useAppStore';
+
+// Global listener to prevent duplicates
+let globalUnlisten = null;
+let globalListenerId = null;
+
+// Global deduplication state
+let globalLastProcessedToken = null;
+let globalTokenCounter = 0;
+let globalCurrentStreamingMessageId = null;
+let globalSetMessages = null;
+let globalSetIsSending = null;
+let globalStreamingTimeout = null;
 
 const ChatPage = () => {
   const { downloadedModels, settings, showNotification } = useAppStore();
@@ -44,15 +57,22 @@ const ChatPage = () => {
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef(null);
   const unlistenRef = useRef(null);
-  const currentStreamingMessageRef = useRef(null);
 
   useEffect(() => {
-    initializePage();
-    setupEventListeners();
+    console.log('ChatPage useEffect - initializing');
+    const initialize = async () => {
+      await initializePage();
+      await setupEventListeners();
+    };
+    
+    initialize();
     
     return () => {
-      if (unlistenRef.current) {
-        unlistenRef.current();
+      console.log('ChatPage useEffect cleanup');
+      if (globalUnlisten) {
+        globalUnlisten();
+        globalUnlisten = null;
+        globalListenerId = null;
       }
     };
   }, []);
@@ -73,8 +93,10 @@ const ChatPage = () => {
       const loadedModel = await invoke('get_loaded_model');
       if (loadedModel) {
         setLoadedModels([{ model_id: loadedModel, device: { oem: 'OpenVINO' } }]);
+        setSelectedModel(loadedModel); // Set the dropdown to match loaded model
       } else {
         setLoadedModels([]);
+        setSelectedModel('');
       }
       
     } catch (error) {
@@ -87,37 +109,107 @@ const ChatPage = () => {
 
   const setupEventListeners = async () => {
     try {
-      // Clean up existing listener first
-      if (unlistenRef.current) {
-        unlistenRef.current();
-        unlistenRef.current = null;
+      // Don't cleanup if there's an active streaming session
+      if (globalCurrentStreamingMessageId) {
+        console.log('Skipping listener setup - streaming session in progress');
+        return;
+      }
+      
+      // Clean up any existing global listener first
+      if (globalUnlisten) {
+        console.log(`Cleaning up existing global listener (ID: ${globalListenerId})`);
+        await globalUnlisten();
+        globalUnlisten = null;
+        globalListenerId = null;
       }
 
-      // Reset streaming message reference
-      currentStreamingMessageRef.current = null;
+      // Reset global streaming message reference
+      console.log(`setupEventListeners: Resetting globalCurrentStreamingMessageId (was: ${globalCurrentStreamingMessageId})`);
+      globalCurrentStreamingMessageId = null;
 
-      // Listen for streaming chat tokens
+      // Add a small delay to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const listenerId = Math.random().toString(36).substr(2, 9);
+      globalListenerId = listenerId;
+      console.log(`Setting up new chat-token event listener (ID: ${listenerId})`);
+      
+      // Store the state setter functions globally
+      globalSetMessages = setMessages;
+      globalSetIsSending = setIsSending;
+      
+      // Use global listen instead of window-specific
       const unlisten = await listen('chat-token', (event) => {
-        console.log('Received chat-token:', event.payload); // Debug log
+        console.log(`[Listener ${listenerId}] Received chat-token event:`, JSON.stringify(event.payload)); // Enhanced debug log
+        
+        // Only allow the current active listener to process events
+        if (globalListenerId !== listenerId) {
+          console.log(`[Listener ${listenerId}] Ignoring event - not active listener (active: ${globalListenerId})`);
+          return;
+        }
+        
+        console.log(`[Listener ${listenerId}] PROCESSING event as active listener`);
+        
         const { token, finished } = event.payload;
+        console.log(`Event details - token: "${token}", finished: ${finished}`);
         
         if (finished) {
-          console.log('Stream finished'); // Debug log
-          setIsSending(false);
-          currentStreamingMessageRef.current = null;
-          // Mark the last streaming message as complete
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-              lastMessage.isStreaming = false;
-            }
-            return newMessages;
-          });
-        } else if (token && token.trim()) { // Only process non-empty tokens
-          console.log('Adding token:', token); // Debug log
+          console.log(`[Listener ${listenerId}] Stream finished - completing message`); // Debug log
           
-          if (!currentStreamingMessageRef.current) {
+          // Clear the timeout since we received proper completion
+          if (globalStreamingTimeout) {
+            clearTimeout(globalStreamingTimeout);
+            globalStreamingTimeout = null;
+          }
+          
+          globalSetIsSending(false);
+          
+          // Add a small delay to ensure any pending token updates complete first
+          setTimeout(() => {
+            // Mark the last streaming message as complete
+            globalSetMessages(prev => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+              console.log('Last message before completion:', lastMessage);
+              if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+                lastMessage.isStreaming = false;
+                console.log('Marked streaming message as complete');
+              }
+              return newMessages;
+            });
+            
+            // Now it's safe to clear the streaming message ID
+            console.log(`Clearing globalCurrentStreamingMessageId (was: ${globalCurrentStreamingMessageId})`);
+            globalCurrentStreamingMessageId = null;
+          }, 50); // Small delay to allow pending updates to complete
+        } else if (token !== undefined && token !== null) { // Process all tokens including empty ones
+          console.log(`[Listener ${listenerId}] Processing token: "${token}" (length: ${token.length})`);
+          
+          // Skip truly empty tokens but allow whitespace
+          if (!token.trim() && token.length === 0) {
+            console.log(`[Listener ${listenerId}] Skipping empty token`);
+            return;
+          }
+          // Global deduplication: check if this is the same token we just processed
+          const timeSinceLastToken = Date.now() - (globalLastProcessedToken?.timestamp || 0);
+          
+          if (globalLastProcessedToken?.token === token && timeSinceLastToken < 100) {
+            console.log(`[Listener ${listenerId}] Skipping duplicate token:`, token);
+            return; // Skip this duplicate token
+          }
+          
+          globalLastProcessedToken = { token, timestamp: Date.now() };
+          globalTokenCounter++;
+          
+          // Clear existing timeout 
+          if (globalStreamingTimeout) {
+            clearTimeout(globalStreamingTimeout);
+            globalStreamingTimeout = null;
+          }
+          
+          console.log(`[Listener ${listenerId}] Adding token #${globalTokenCounter}:`, token); // Debug log
+          
+          if (!globalCurrentStreamingMessageId) {
             // Start a new streaming message
             const newMessage = {
               id: Date.now() + Math.random(), // Unique ID
@@ -126,25 +218,27 @@ const ChatPage = () => {
               timestamp: Date.now(),
               isStreaming: true,
             };
-            currentStreamingMessageRef.current = newMessage.id;
+            globalCurrentStreamingMessageId = newMessage.id;
+            console.log(`Started new streaming message with ID: ${globalCurrentStreamingMessageId}`);
             
-            setMessages(prev => [...prev, newMessage]);
+            globalSetMessages(prev => [...prev, newMessage]);
           } else {
             // Append to existing streaming message
-            setMessages(prev => {
+            console.log(`Appending to existing message ID: ${globalCurrentStreamingMessageId}`);
+            globalSetMessages(prev => {
               const newMessages = [...prev];
-              const messageIndex = newMessages.findIndex(m => m.id === currentStreamingMessageRef.current);
+              const messageIndex = newMessages.findIndex(m => m.id === globalCurrentStreamingMessageId);
               
               if (messageIndex !== -1) {
                 const existingMessage = newMessages[messageIndex];
-                // Build token array to prevent duplicates
-                const existingTokens = existingMessage.content.split(' ');
-                if (!existingTokens.includes(token)) {
-                  newMessages[messageIndex] = {
-                    ...existingMessage,
-                    content: existingMessage.content + ' ' + token
-                  };
-                }
+                const updatedMessage = {
+                  ...existingMessage,
+                  content: existingMessage.content + token
+                };
+                newMessages[messageIndex] = updatedMessage;
+                console.log(`Updated message content: "${updatedMessage.content}"`);
+              } else {
+                console.log(`Could not find message with ID: ${globalCurrentStreamingMessageId}`);
               }
               
               return newMessages;
@@ -153,25 +247,40 @@ const ChatPage = () => {
         }
       });
       
+      globalUnlisten = unlisten;
       unlistenRef.current = unlisten;
+      console.log(`Event listener setup complete (ID: ${listenerId})`);
     } catch (error) {
       console.error('Failed to setup event listeners:', error);
     }
   };
 
-  const handleLoadModel = async () => {
-    if (!selectedModel) {
-      showNotification('Please select a model to load', 'warning');
+  const handleModelChange = async (newModelId) => {
+    if (!newModelId) {
+      setSelectedModel('');
       return;
+    }
+
+    if (newModelId === selectedModel) {
+      return; // No change
     }
 
     try {
       setIsLoadingModel(true);
+      setSelectedModel(newModelId);
+      
+      // If a model is currently loaded, unload it first
+      if (loadedModels.length > 0) {
+        await invoke('unload_model');
+        setLoadedModels([]);
+      }
+      
+      // Load the new model
       const result = await invoke('load_model', {
-        modelId: selectedModel,
+        modelId: newModelId,
       });
       
-      showNotification(result, 'success');
+      showNotification(`Model loaded: ${newModelId.includes('/') ? newModelId.split('/')[1] : newModelId}`, 'success');
       
       // Refresh loaded models list
       const loadedModel = await invoke('get_loaded_model');
@@ -184,6 +293,8 @@ const ChatPage = () => {
     } catch (error) {
       console.error('Failed to load model:', error);
       showNotification(`Failed to load model: ${error}`, 'error');
+      // Reset selection on error
+      setSelectedModel('');
     } finally {
       setIsLoadingModel(false);
     }
@@ -194,13 +305,9 @@ const ChatPage = () => {
       const result = await invoke('unload_model');
       showNotification(result, 'success');
       
-      // Refresh loaded models list
-      const loadedModel = await invoke('get_loaded_model');
-      if (loadedModel) {
-        setLoadedModels([{ model_id: loadedModel, device: { oem: 'OpenVINO' } }]);
-      } else {
-        setLoadedModels([]);
-      }
+      // Clear the selection and loaded models
+      setSelectedModel('');
+      setLoadedModels([]);
       
     } catch (error) {
       console.error('Failed to unload model:', error);
@@ -226,20 +333,21 @@ const ChatPage = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsSending(true);
-    currentStreamingMessageRef.current = null; // Reset for new response
+    
+    // Reset global streaming state for new response
+    console.log(`handleSendMessage: Resetting globalCurrentStreamingMessageId (was: ${globalCurrentStreamingMessageId})`);
+    globalCurrentStreamingMessageId = null;
+    globalLastProcessedToken = null;
+    globalTokenCounter = 0;
 
     try {
-      const response = await invoke('chat_with_loaded_model', { 
+      // Use streaming chat function
+      await invoke('chat_with_loaded_model_streaming', { 
         message: inputMessage.trim()
       });
       
-      // Add the complete response
-      setMessages(prev => [...prev, {
-        id: Date.now() + Math.random(),
-        role: 'assistant',
-        content: response,
-        timestamp: Date.now(),
-      }]);
+      // The response will be handled by the streaming event listener
+      // No need to add message here as it's handled in the event listener
       
     } catch (error) {
       console.error('Chat error:', error);
@@ -275,71 +383,9 @@ const ChatPage = () => {
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Chat with AI Models
-      </Typography>
+  
 
 
-      {/* Model Management */}
-      <Card sx={{ mb: 2 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Model Management
-          </Typography>
-          
-          <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
-            <FormControl sx={{ minWidth: 200 }}>
-              <InputLabel>Select Model</InputLabel>
-              <Select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                label="Select Model"
-              >
-                {downloadedModelsList.map((modelId) => (
-                  <MenuItem key={modelId} value={modelId}>
-                    {modelId.includes('/') ? modelId.split('/')[1] : modelId}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            
-            <Button
-              variant="contained"
-              onClick={handleLoadModel}
-              disabled={!selectedModel || isLoadingModel}
-              startIcon={isLoadingModel ? <CircularProgress size={20} /> : <LoadIcon />}
-            >
-              {isLoadingModel ? 'Loading...' : 'Load Model'}
-            </Button>
-          </Box>
-
-          {/* Loaded Models */}
-          {loadedModels.length > 0 && (
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Loaded Models:
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                {loadedModels.map((model) => (
-                  <Chip
-                    key={model.model_id}
-                    label={`${model.model_id.includes('/') ? model.model_id.split('/')[1] : model.model_id} (${model.device.oem})`}
-                    onDelete={() => handleUnloadModel(model.model_id)}
-                    color="primary"
-                    variant="outlined"
-                  />
-                ))}
-              </Box>
-            </Box>
-          )}
-
-          {downloadedModelsList.length === 0 && (
-            <Alert severity="warning">
-              No downloaded models found. Please download some models from the Models page first.
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Chat Messages */}
       <Card sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', mb: 2 }}>
@@ -380,7 +426,8 @@ const ChatPage = () => {
 
       {/* Input Area */}
       <Paper sx={{ p: 2 }}>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        {/* First Row: Full Width Input Field */}
+        <Box sx={{ mb: 2 }}>
           <TextField
             fullWidth
             multiline
@@ -390,22 +437,52 @@ const ChatPage = () => {
             onKeyPress={handleKeyPress}
             placeholder="Type your message here..."
             disabled={isSending || loadedModels.length === 0}
+            variant="outlined"
           />
+        </Box>
+        
+        {/* Second Row: Model Selection + Send Button */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, alignItems: 'center' }}>
+          {/* Loading Indicator */}
+          {isLoadingModel && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={20} />
+              <Typography variant="caption" color="text.secondary">
+                Loading model...
+              </Typography>
+            </Box>
+          )}
+          
+          <FormControl sx={{ minWidth: 180, maxWidth: 250 }}>
+            <InputLabel>Model</InputLabel>
+            <Select
+              value={selectedModel}
+              onChange={(e) => handleModelChange(e.target.value)}
+              label="Model"
+              size="small"
+              disabled={isLoadingModel}
+            >
+              {downloadedModelsList.map((modelId) => (
+                <MenuItem key={modelId} value={modelId}>
+                  {modelId.includes('/') ? modelId.split('/')[1] : modelId}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          
+          {/* Send Button */}
           <Button
             variant="contained"
             onClick={handleSendMessage}
             disabled={!inputMessage.trim() || isSending || loadedModels.length === 0}
-            sx={{ minWidth: 'auto', px: 2 }}
+            endIcon={isSending ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
+            size="medium"
+            sx={{ minWidth: 100 }}
           >
-            {isSending ? <CircularProgress size={24} /> : <SendIcon />}
+            {isSending ? 'Sending' : 'Send'}
           </Button>
         </Box>
         
-        {loadedModels.length === 0 && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Load a model to start chatting
-          </Typography>
-        )}
       </Paper>
     </Box>
   );

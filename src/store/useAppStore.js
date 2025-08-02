@@ -14,9 +14,7 @@ const useAppStore = create(
       downloadedModels: new Set(),
       
       // Settings state
-      settings: {
-        downloadLocation: '',
-      },
+      settings: {},
       settingsDialogOpen: false,
       sidebarCollapsed: false,
       
@@ -65,9 +63,6 @@ const useAppStore = create(
       setSettingsDialogOpen: (open) => set({ settingsDialogOpen: open }),
       updateSettings: (newSettings) => set((state) => ({
         settings: { ...state.settings, ...newSettings }
-      })),
-      setDownloadLocation: (location) => set((state) => ({
-        settings: { ...state.settings, downloadLocation: location }
       })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       
