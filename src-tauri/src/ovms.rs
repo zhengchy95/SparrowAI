@@ -735,8 +735,10 @@ pub fn stop_ovms_server() -> Result<(), String> {
     // Also try the system-wide kill as fallback
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         let _ = Command::new("taskkill")
             .args(["/IM", "ovms.exe", "/F"])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output();
     }
     
