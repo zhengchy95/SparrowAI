@@ -47,8 +47,17 @@ let globalStreamingTimeout = null;
 let globalStreamingStartTime = null;
 
 const ChatPage = () => {
-  const { downloadedModels, settings, showNotification } = useAppStore();
-  const [messages, setMessages] = useState([]);
+  const { 
+    downloadedModels, 
+    settings, 
+    showNotification,
+    activeChatSessionId,
+    currentChatMessages,
+    setCurrentChatMessages,
+    addMessageToCurrentChat,
+    clearCurrentChatMessages,
+    updateChatSession
+  } = useAppStore();
   const [inputMessage, setInputMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [loadedModels, setLoadedModels] = useState([]);
@@ -76,12 +85,34 @@ const ChatPage = () => {
     };
   }, []);
 
+  // Load messages when active chat session changes
   useEffect(() => {
+    if (activeChatSessionId) {
+      loadChatSessionMessages(activeChatSessionId);
+    } else {
+      clearCurrentChatMessages();
+    }
+  }, [activeChatSessionId]);
+
+  useEffect(() => {
+    console.log('currentChatMessages updated:', currentChatMessages);
     scrollToBottom();
-  }, [messages]);
+  }, [currentChatMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const loadChatSessionMessages = async (sessionId) => {
+    try {
+      const messages = await invoke('get_session_messages', { sessionId });
+      console.log('Loaded messages:', messages, 'Type:', typeof messages, 'IsArray:', Array.isArray(messages));
+      setCurrentChatMessages(Array.isArray(messages) ? messages : []);
+    } catch (error) {
+      console.error('Failed to load chat session messages:', error);
+      showNotification('Failed to load chat messages', 'error');
+      setCurrentChatMessages([]);
+    }
   };
 
   const initializePage = async () => {
@@ -130,7 +161,15 @@ const ChatPage = () => {
       globalListenerId = listenerId;
       
       // Store the state setter functions globally
-      globalSetMessages = setMessages;
+      globalSetMessages = (updater) => {
+        if (typeof updater === 'function') {
+          const currentMessages = useAppStore.getState().currentChatMessages || [];
+          const newMessages = updater(currentMessages);
+          useAppStore.getState().setCurrentChatMessages(newMessages);
+        } else {
+          useAppStore.getState().setCurrentChatMessages(updater);
+        }
+      };
       globalSetIsSending = setIsSending;
       
       // Use global listen instead of window-specific
@@ -141,6 +180,7 @@ const ChatPage = () => {
         }
         
         const { token, finished } = event.payload;
+        console.log('Received chat token:', { token, finished });
         
         if (finished) {
           // Clear the timeout since we received proper completion
@@ -156,17 +196,44 @@ const ChatPage = () => {
           const tokensPerSecond = globalTokenCounter / streamingDuration;
           
           // Add a small delay to ensure any pending token updates complete first
-          setTimeout(() => {
+          setTimeout(async () => {
             // Mark the last streaming message as complete and add tokens per second
-            globalSetMessages(prev => {
-              const newMessages = [...prev];
-              const lastMessage = newMessages[newMessages.length - 1];
-              if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-                lastMessage.isStreaming = false;
-                lastMessage.tokensPerSecond = tokensPerSecond;
+            let finalMessage = null;
+            const currentMessages = useAppStore.getState().currentChatMessages || [];
+            const newMessages = [...currentMessages];
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+              lastMessage.isStreaming = false;
+              lastMessage.tokens_per_second = tokensPerSecond;
+              finalMessage = lastMessage;
+              useAppStore.getState().setCurrentChatMessages(newMessages);
+            }
+            
+            // Save the complete assistant message to chat session
+            if (finalMessage && finalMessage.content) {
+              try {
+                const savedMessage = await invoke('add_message_to_session', {
+                  sessionId: useAppStore.getState().activeChatSessionId,
+                  role: 'assistant',
+                  content: finalMessage.content,
+                  tokens_per_second: tokensPerSecond,
+                  is_error: null
+                });
+                
+                console.log('Saved assistant message with tokens per second:', tokensPerSecond);
+                
+                // Update the local message with the saved message ID
+                const currentMessages = useAppStore.getState().currentChatMessages || [];
+                const updatedMessages = [...currentMessages];
+                const lastMessage = updatedMessages[updatedMessages.length - 1];
+                if (lastMessage && lastMessage.role === 'assistant') {
+                  lastMessage.id = savedMessage.id;
+                  useAppStore.getState().setCurrentChatMessages(updatedMessages);
+                }
+              } catch (error) {
+                console.error('Failed to save assistant message:', error);
               }
-              return newMessages;
-            });
+            }
             
             // Clear streaming state
             globalCurrentStreamingMessageId = null;
@@ -211,12 +278,19 @@ const ChatPage = () => {
             };
             globalCurrentStreamingMessageId = newMessage.id;
             
-            globalSetMessages(prev => [...prev, newMessage]);
+            console.log('Starting new streaming message:', newMessage);
+            globalSetMessages(prev => {
+              console.log('Adding new message to chat, previous messages:', prev);
+              return [...prev, newMessage];
+            });
           } else {
             // Append to existing streaming message
+            console.log('Appending token to existing message:', token);
             globalSetMessages(prev => {
               const newMessages = [...prev];
               const messageIndex = newMessages.findIndex(m => m.id === globalCurrentStreamingMessageId);
+              
+              console.log('Found message at index:', messageIndex, 'Total messages:', newMessages.length);
               
               if (messageIndex !== -1) {
                 const existingMessage = newMessages[messageIndex];
@@ -225,6 +299,7 @@ const ChatPage = () => {
                   content: existingMessage.content + token
                 };
                 newMessages[messageIndex] = updatedMessage;
+                console.log('Updated message content:', updatedMessage.content);
               }
               
               return newMessages;
@@ -307,43 +382,71 @@ const ChatPage = () => {
       showNotification('Please load a model first', 'warning');
       return;
     }
+    
+    console.log('Loaded models:', loadedModels);
 
-    const userMessage = {
-      id: Date.now() + Math.random(),
-      role: 'user',
-      content: inputMessage.trim(),
-      timestamp: Date.now(),
-    };
+    if (!activeChatSessionId) {
+      showNotification('Please create or select a chat session first', 'warning');
+      return;
+    }
 
-    setMessages(prev => [...prev, userMessage]);
+    const messageContent = inputMessage.trim();
     setInputMessage('');
     setIsSending(true);
     
-    // Reset global streaming state for new response
-    globalCurrentStreamingMessageId = null;
-    globalLastProcessedToken = null;
-    globalTokenCounter = 0;
-    globalStreamingStartTime = null;
-
     try {
-      // Use streaming chat function
-      await invoke('chat_with_loaded_model_streaming', { 
-        message: inputMessage.trim()
+      // Add user message to chat session
+      const userMessage = await invoke('add_message_to_session', {
+        sessionId: activeChatSessionId,
+        role: 'user',
+        content: messageContent,
+        tokens_per_second: null,
+        is_error: null
       });
       
+      addMessageToCurrentChat(userMessage);
+      console.log('Added user message to current chat');
+      
+      // Update session title if it was auto-generated and refresh chat sessions
+      const sessionData = await invoke('get_chat_sessions');
+      const currentSession = sessionData.sessions[activeChatSessionId];
+      if (currentSession) {
+        // Update the session in the store with the latest data including messages
+        updateChatSession(activeChatSessionId, currentSession);
+      }
+      
+      // Reset global streaming state for new response
+      globalCurrentStreamingMessageId = null;
+      globalLastProcessedToken = null;
+      globalTokenCounter = 0;
+      globalStreamingStartTime = null;
+
+      // Use streaming chat function
+      console.log('Sending message to model:', messageContent);
+      await invoke('chat_with_loaded_model_streaming', { 
+        message: messageContent
+      });
+      console.log('Message sent, waiting for streaming response...');
+      
       // The response will be handled by the streaming event listener
-      // No need to add message here as it's handled in the event listener
       
     } catch (error) {
       console.error('Chat error:', error);
       showNotification(`Chat error: ${error}`, 'error');
-      setMessages(prev => [...prev, {
-        id: Date.now() + Math.random(),
-        role: 'assistant',
-        content: `Error: ${error}`,
-        timestamp: Date.now(),
-        isError: true,
-      }]);
+      
+      // Add error message to session
+      try {
+        const errorMessage = await invoke('add_message_to_session', {
+          sessionId: activeChatSessionId,
+          role: 'assistant',
+          content: `Error: ${error}`,
+          tokens_per_second: null,
+          is_error: true
+        });
+        addMessageToCurrentChat(errorMessage);
+      } catch (saveError) {
+        console.error('Failed to save error message:', saveError);
+      }
     } finally {
       setIsSending(false);
     }
@@ -376,7 +479,7 @@ const ChatPage = () => {
       <Card sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', mb: 2, boxShadow: 'none', border: 'none' }}>
         <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 0 }}>
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
-            {messages.length === 0 ? (
+            {(!Array.isArray(currentChatMessages) || currentChatMessages.length === 0) ? (
               <Box sx={{ 
                 textAlign: 'center', 
                 py: 8,
@@ -399,7 +502,7 @@ const ChatPage = () => {
               </Box>
             ) : (
               <List sx={{ p: 0 }}>
-                {messages.map((message, index) => (
+                {Array.isArray(currentChatMessages) ? currentChatMessages.map((message, index) => (
                   <ListItem key={message.id || index} sx={{ px: 0, py: 1, alignItems: 'flex-start' }}>
                     <Avatar sx={{ mr: 2, bgcolor: message.role === 'user' ? 'primary.main' : 'secondary.main' }}>
                       {message.role === 'user' ? <PersonIcon /> : <BotIcon />}
@@ -412,11 +515,11 @@ const ChatPage = () => {
                         {message.content}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {message.tokensPerSecond ? `${message.tokensPerSecond.toFixed(1)} tokens/sec` : new Date(message.timestamp).toLocaleTimeString()}
+                        {message.tokens_per_second ? `${message.tokens_per_second.toFixed(1)} tokens/sec` : new Date(message.timestamp).toLocaleTimeString()}
                       </Typography>
                     </Box>
                   </ListItem>
-                ))}
+                )) : null}
               </List>
             )}
             <div ref={messagesEndRef} />
@@ -441,10 +544,12 @@ const ChatPage = () => {
             onFocus={() => {
               if (loadedModels.length === 0) {
                 showNotification('Please select and load a model first', 'warning');
+              } else if (!activeChatSessionId) {
+                showNotification('Please create a new chat or select an existing one', 'warning');
               }
             }}
             placeholder="How can I help you today?"
-            disabled={isSending || loadedModels.length === 0}
+            disabled={isSending || loadedModels.length === 0 || !activeChatSessionId}
             variant="outlined"
             sx={{
               '& .MuiOutlinedInput-root': {
@@ -488,7 +593,7 @@ const ChatPage = () => {
           <Button
             variant="contained"
             onClick={handleSendMessage}
-            disabled={!inputMessage.trim() || isSending || loadedModels.length === 0}
+            disabled={!inputMessage.trim() || isSending || loadedModels.length === 0 || !activeChatSessionId}
             endIcon={isSending ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
             size="medium"
             sx={{ minWidth: 100 }}

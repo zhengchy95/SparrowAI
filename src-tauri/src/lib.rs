@@ -3,6 +3,7 @@ use std::path::PathBuf;
 mod huggingface;
 mod ovms;
 mod tests;
+mod chat_sessions;
 
 fn generate_ovms_graph(model_dir: &PathBuf, model_id: &str) -> Result<(), String> {
     // Extract model name from ID (e.g., "OpenVINO/Phi-3.5-mini-instruct-int4-ov" -> "Phi-3.5-mini-instruct-int4-ov")
@@ -384,7 +385,14 @@ pub fn run() {
                 tests::test_model_loading,
                 tests::test_model_workflow,
                 tests::show_model_commands,
-                tests::test_download_paths
+                tests::test_download_paths,
+                chat_sessions::get_chat_sessions,
+                chat_sessions::create_chat_session,
+                chat_sessions::update_chat_session,
+                chat_sessions::delete_chat_session,
+                chat_sessions::set_active_chat_session,
+                chat_sessions::add_message_to_session,
+                chat_sessions::get_session_messages
             ]
         )
         .setup(|app| {

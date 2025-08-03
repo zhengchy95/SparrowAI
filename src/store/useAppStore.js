@@ -19,6 +19,11 @@ const useAppStore = create(
       sidebarCollapsed: false,
       themeMode: 'dark', // 'light' or 'dark'
       
+      // Chat sessions state
+      chatSessions: {},
+      activeChatSessionId: null,
+      currentChatMessages: [],
+      
       // Notification state
       notification: null,
       
@@ -67,6 +72,32 @@ const useAppStore = create(
       })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       setThemeMode: (mode) => set({ themeMode: mode }),
+      
+      // Chat session actions
+      setChatSessions: (sessions) => set({ chatSessions: sessions }),
+      setActiveChatSessionId: (sessionId) => set({ activeChatSessionId: sessionId }),
+      setCurrentChatMessages: (messages) => set({ currentChatMessages: Array.isArray(messages) ? messages : [] }),
+      addChatSession: (session) => set((state) => ({
+        chatSessions: { ...state.chatSessions, [session.id]: session }
+      })),
+      updateChatSession: (sessionId, updates) => set((state) => ({
+        chatSessions: {
+          ...state.chatSessions,
+          [sessionId]: { ...state.chatSessions[sessionId], ...updates }
+        }
+      })),
+      removeChatSession: (sessionId) => set((state) => {
+        const newSessions = { ...state.chatSessions };
+        delete newSessions[sessionId];
+        return {
+          chatSessions: newSessions,
+          activeChatSessionId: state.activeChatSessionId === sessionId ? null : state.activeChatSessionId
+        };
+      }),
+      addMessageToCurrentChat: (message) => set((state) => ({
+        currentChatMessages: [...(state.currentChatMessages || []), message]
+      })),
+      clearCurrentChatMessages: () => set({ currentChatMessages: [] }),
       
       // Notification actions
       showNotification: (message, type = 'info') => set({ 
