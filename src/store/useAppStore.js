@@ -16,6 +16,12 @@ const useAppStore = create(
       // Settings state
       settings: {
         includeConversationHistory: true, // Default to true
+        systemPrompt: "You're an AI assistant that provides helpful responses.",
+        temperature: 0.7,
+        topP: 1.0,
+        seed: null,
+        maxTokens: null,
+        maxCompletionTokens: null,
       },
       settingsDialogOpen: false,
       sidebarCollapsed: false,
@@ -120,6 +126,11 @@ const useAppStore = create(
           ...currentState,
           ...persistedState,
           downloadedModels: new Set(persistedState?.downloadedModels || []),
+          // Merge settings with defaults
+          settings: {
+            ...currentState.settings,
+            ...persistedState?.settings,
+          },
           // Reset transient state
           downloadingModels: new Set(),
           downloadProgress: {},
