@@ -21,7 +21,7 @@ const SearchBar = () => {
     setSearchQuery(localQuery);
     
     try {
-      const result = await invoke('search_models', { query: localQuery, limit: 20 });
+      const result = await invoke('search_models', { query: localQuery, limit: 10 });
       setSearchResults(result.models.map(model => model.id));
     } catch (error) {
       console.error('Search failed:', error);
@@ -42,12 +42,18 @@ const SearchBar = () => {
       <Paper
         component="form"
         sx={{
-          p: '2px 4px',
+          p: '12px 16px',
           display: 'flex',
           alignItems: 'center',
           width: '100%',
           maxWidth: 600,
           mx: 'auto',
+          borderRadius: '24px',
+          transition: 'all 0.2s ease',
+          '&:focus-within': {
+            borderColor: 'primary.main',
+            boxShadow: '0 0 0 2px rgba(255, 140, 0, 0.1)',
+          },
         }}
         onSubmit={(e) => {
           e.preventDefault();
@@ -55,7 +61,11 @@ const SearchBar = () => {
         }}
       >
         <InputBase
-          sx={{ ml: 1, flex: 1 }}
+          sx={{ 
+            ml: 1, 
+            flex: 1,
+            fontSize: '16px',
+          }}
           placeholder="Search Hugging Face models..."
           inputProps={{ 'aria-label': 'search hugging face models' }}
           value={localQuery}
@@ -65,12 +75,18 @@ const SearchBar = () => {
         />
         <IconButton 
           type="button" 
-          sx={{ p: '10px' }} 
+          sx={{ 
+            p: '8px',
+            color: localQuery.trim() ? 'primary.main' : 'text.disabled',
+            '&:hover': {
+              backgroundColor: 'action.hover',
+            },
+          }} 
           aria-label="search"
           onClick={handleSearch}
           disabled={isSearching || !localQuery.trim()}
         >
-          {isSearching ? <CircularProgress size={24} /> : <SearchIcon />}
+          {isSearching ? <CircularProgress size={20} color="primary" /> : <SearchIcon />}
         </IconButton>
       </Paper>
     </Box>

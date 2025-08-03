@@ -373,13 +373,28 @@ const ChatPage = () => {
 
 
       {/* Chat Messages */}
-      <Card sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', mb: 2 }}>
+      <Card sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', mb: 2, boxShadow: 'none', border: 'none' }}>
         <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 0 }}>
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
             {messages.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="body1" color="text.secondary">
-                  Start a conversation with your AI model
+              <Box sx={{ 
+                textAlign: 'center', 
+                py: 8,
+                mx: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+              }}>
+                <Typography 
+                  variant="h4" 
+                  color="text.secondary" 
+                  sx={{ 
+                    fontWeight: 300
+                  }}
+                >
+                  How can I help you today?
                 </Typography>
               </Box>
             ) : (
@@ -410,7 +425,10 @@ const ChatPage = () => {
       </Card>
 
       {/* Input Area */}
-      <Paper sx={{ p: 2 }}>
+      <Paper sx={{ 
+        p: 3, 
+        borderRadius: '16px',
+      }}>
         {/* First Row: Full Width Input Field */}
         <Box sx={{ mb: 2 }}>
           <TextField
@@ -420,9 +438,20 @@ const ChatPage = () => {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Type your message here..."
+            onFocus={() => {
+              if (loadedModels.length === 0) {
+                showNotification('Please select and load a model first', 'warning');
+              }
+            }}
+            placeholder="How can I help you today?"
             disabled={isSending || loadedModels.length === 0}
             variant="outlined"
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '12px',
+                fontSize: '16px',
+              },
+            }}
           />
         </Box>
         

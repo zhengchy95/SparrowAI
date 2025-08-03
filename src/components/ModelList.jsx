@@ -82,7 +82,14 @@ const ModelCard = ({ modelId }) => {
       
       console.log('Download completed:', result);
       addDownloadedModel(model.id);
-      showNotification(`Download completed!\n\n${result}`, 'success');
+      
+      // Extract model name and size from result
+      const modelName = model.id.split('/').pop() || model.id;
+      const sizeMatch = result.match(/\((\d+(?:\.\d+)?)\s*MB\)/);
+      const sizeInMB = sizeMatch ? parseFloat(sizeMatch[1]) : 0;
+      const sizeInGB = (sizeInMB / 1024).toFixed(2);
+      
+      showNotification(`Downloaded: ${modelName}\nSize: ${sizeInGB} GB`, 'success');
     } catch (error) {
       console.error('Download failed:', error);
       showNotification(`Download failed: ${error}`, 'error');
@@ -139,7 +146,7 @@ const ModelCard = ({ modelId }) => {
 
   if (loading) {
     return (
-      <Card sx={{ mb: 2 }}>
+      <Card sx={{ mb: 2, width: '100%' }}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
             <Box sx={{ flex: 1 }}>
@@ -160,7 +167,7 @@ const ModelCard = ({ modelId }) => {
 
   if (error) {
     return (
-      <Card sx={{ mb: 2 }}>
+      <Card sx={{ mb: 2, width: '100%' }}>
         <CardContent>
           <Typography color="error" variant="body1">
             Failed to load model: {modelId}
@@ -178,7 +185,7 @@ const ModelCard = ({ modelId }) => {
   }
 
   return (
-    <Card sx={{ mb: 2 }}>
+    <Card sx={{ mb: 2, width: '100%' }}>
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box sx={{ flex: 1 }}>
@@ -348,13 +355,24 @@ const ModelCard = ({ modelId }) => {
 };
 
 const ModelList = () => {
-  const { searchResults, searchQuery } = useAppStore();
+  const { searchResults, searchQuery, isSearching } = useAppStore();
 
   if (!searchQuery) {
     return (
       <Box sx={{ p: 4, textAlign: 'center' }}>
         <Typography variant="h6" color="text.secondary">
           Search for Hugging Face models to get started
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (isSearching) {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography variant="h6" color="text.secondary" sx={{ mt: 2 }}>
+          Searching for models...
         </Typography>
       </Box>
     );
