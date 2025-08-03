@@ -36,11 +36,15 @@ struct HfModelInfo {
     pub tags: Option<Vec<String>>,
     pub downloads: Option<u64>,
     pub likes: Option<u64>,
-    #[serde(rename = "created_at")]
+    // The search API uses "createdAt" instead of "created_at"
+    #[serde(rename = "createdAt")]
     pub created_at: Option<String>,
-    #[serde(rename = "last_modified")]
+    #[serde(rename = "lastModified")]
     pub last_modified: Option<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
 }
+
 
 #[derive(Debug, Deserialize)]
 struct HfFileInfo {
@@ -152,6 +156,7 @@ async fn download_single_file(
     Ok(downloaded)
 }
 
+
 #[tauri::command]
 async fn search_models(query: String, limit: Option<u32>) -> Result<SearchResult, String> {
     let client = reqwest::Client::new();
@@ -182,10 +187,10 @@ async fn search_models(query: String, limit: Option<u32>) -> Result<SearchResult
 
     let hf_models: Vec<HfModelInfo> = response
         .json().await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
     // Filter to only include OpenVINO models and optionally filter by query
-    let models: Vec<ModelInfo> = hf_models
+    let model_ids: Vec<String> = hf_models
         .into_iter()
         .filter(|hf_model| {
             // Ensure the model is from OpenVINO organization
@@ -194,18 +199,20 @@ async fn search_models(query: String, limit: Option<u32>) -> Result<SearchResult
                 (query.trim().is_empty() ||
                     hf_model.id.to_lowercase().contains(&query.to_lowercase()))
         })
-        .map(|hf_model| ModelInfo {
-            id: hf_model.id,
-            author: hf_model.author,
-            sha: hf_model.sha,
-            pipeline_tag: hf_model.pipeline_tag,
-            tags: hf_model.tags.unwrap_or_default(),
-            downloads: hf_model.downloads,
-            likes: hf_model.likes,
-            created_at: hf_model.created_at,
-            last_modified: hf_model.last_modified,
-        })
+        .map(|hf_model| hf_model.id)
         .collect();
+
+    // Get detailed info for each model
+    let mut models: Vec<ModelInfo> = Vec::new();
+    for model_id in &model_ids {
+        match get_model_info(model_id.clone()).await {
+            Ok(model_info) => models.push(model_info),
+            Err(e) => {
+                eprintln!("Failed to get info for model {}: {}", model_id, e);
+                // Continue with other models instead of failing entirely
+            }
+        }
+    }
 
     let total_count = models.len() as u64;
 
@@ -246,9 +253,17 @@ async fn get_model_info(model_id: String) -> Result<ModelInfo, String> {
         );
     }
 
-    let hf_model: HfModelInfo = response
-        .json().await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    // Get response text for debugging
+    let response_text = response.text().await
+        .map_err(|e| format!("Failed to read response text: {}", e))?;
+    
+    println!("Individual model API response for {}: {}", normalized_model_id, &response_text[..response_text.len().min(1000)]);
+    
+    let hf_model: HfModelInfo = serde_json::from_str(&response_text)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    
+    println!("Parsed model data for {}: sha={:?}, last_modified={:?}, created_at={:?}", 
+             hf_model.id, hf_model.sha, hf_model.last_modified, hf_model.created_at);
 
     // Verify this is actually an OpenVINO model
     if !hf_model.id.starts_with("OpenVINO/") {
@@ -737,9 +752,11 @@ async fn open_model_folder(
 
     // Use different commands based on the OS
     let result = if cfg!(target_os = "windows") {
+        // On Windows, use forward slashes for explorer or convert path
+        let windows_path = model_dir.to_string_lossy().replace('/', "\\");
         std::process::Command
             ::new("explorer")
-            .arg(&model_dir)
+            .arg(&windows_path)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))
     } else if cfg!(target_os = "macos") {

@@ -22,7 +22,7 @@ const SearchBar = () => {
     
     try {
       const result = await invoke('search_models', { query: localQuery, limit: 20 });
-      setSearchResults(result.models);
+      setSearchResults(result.models.map(model => model.id));
     } catch (error) {
       console.error('Search failed:', error);
       setSearchResults([]);

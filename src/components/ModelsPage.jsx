@@ -13,6 +13,11 @@ import {
   Tabs,
   Tab,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -30,14 +35,15 @@ import { invoke } from '@tauri-apps/api/core';
 
 const DownloadedModelCard = ({ modelId }) => {
   const { removeDownloadedModel, showNotification } = useAppStore();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const handleDelete = async () => {
-    const userConfirmed = window.confirm(`Are you sure you want to delete ${modelId}? This will permanently remove all downloaded files.`);
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    setDeleteDialogOpen(false);
     
-    if (!userConfirmed) {
-      return;
-    }
-
     try {
       // Always use default path (no custom download location)
       const result = await invoke('delete_downloaded_model', {
@@ -51,6 +57,10 @@ const DownloadedModelCard = ({ modelId }) => {
       console.error('Delete failed:', error);
       showNotification(`Failed to delete model: ${error}`, 'error');
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
   };
 
   const handleOpenFolder = async () => {
@@ -99,7 +109,7 @@ const DownloadedModelCard = ({ modelId }) => {
             <Tooltip title="Delete Model">
               <IconButton
                 color="error"
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
               >
                 <DeleteIcon />
               </IconButton>
@@ -107,6 +117,33 @@ const DownloadedModelCard = ({ modelId }) => {
           </Box>
         </Box>
       </CardContent>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Model
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-dialog-description">
+            Are you sure you want to delete <strong>{modelId}</strong>?
+            <br />
+            This will permanently remove all downloaded files and cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="primary">
+            No, Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+            Yes, Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 };
@@ -205,7 +242,7 @@ const ModelsPage = () => {
             <>
               <Grid container spacing={2}>
                 {downloadedModelsList.map((modelId) => (
-                  <Grid item xs={12} key={modelId}>
+                  <Grid size={12} key={modelId}>
                     <DownloadedModelCard modelId={modelId} />
                   </Grid>
                 ))}
