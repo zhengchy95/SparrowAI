@@ -37,13 +37,14 @@ import useAppStore from '../store/useAppStore';
 let globalUnlisten = null;
 let globalListenerId = null;
 
-// Global deduplication state
+// Global streaming state
 let globalLastProcessedToken = null;
 let globalTokenCounter = 0;
 let globalCurrentStreamingMessageId = null;
 let globalSetMessages = null;
 let globalSetIsSending = null;
 let globalStreamingTimeout = null;
+let globalStreamingStartTime = null;
 
 const ChatPage = () => {
   const { downloadedModels, settings, showNotification } = useAppStore();
@@ -59,7 +60,6 @@ const ChatPage = () => {
   const unlistenRef = useRef(null);
 
   useEffect(() => {
-    console.log('ChatPage useEffect - initializing');
     const initialize = async () => {
       await initializePage();
       await setupEventListeners();
@@ -68,7 +68,6 @@ const ChatPage = () => {
     initialize();
     
     return () => {
-      console.log('ChatPage useEffect cleanup');
       if (globalUnlisten) {
         globalUnlisten();
         globalUnlisten = null;
@@ -111,20 +110,17 @@ const ChatPage = () => {
     try {
       // Don't cleanup if there's an active streaming session
       if (globalCurrentStreamingMessageId) {
-        console.log('Skipping listener setup - streaming session in progress');
         return;
       }
       
       // Clean up any existing global listener first
       if (globalUnlisten) {
-        console.log(`Cleaning up existing global listener (ID: ${globalListenerId})`);
         await globalUnlisten();
         globalUnlisten = null;
         globalListenerId = null;
       }
 
       // Reset global streaming message reference
-      console.log(`setupEventListeners: Resetting globalCurrentStreamingMessageId (was: ${globalCurrentStreamingMessageId})`);
       globalCurrentStreamingMessageId = null;
 
       // Add a small delay to ensure cleanup is complete
@@ -132,7 +128,6 @@ const ChatPage = () => {
 
       const listenerId = Math.random().toString(36).substr(2, 9);
       globalListenerId = listenerId;
-      console.log(`Setting up new chat-token event listener (ID: ${listenerId})`);
       
       // Store the state setter functions globally
       globalSetMessages = setMessages;
@@ -140,22 +135,14 @@ const ChatPage = () => {
       
       // Use global listen instead of window-specific
       const unlisten = await listen('chat-token', (event) => {
-        console.log(`[Listener ${listenerId}] Received chat-token event:`, JSON.stringify(event.payload)); // Enhanced debug log
-        
         // Only allow the current active listener to process events
         if (globalListenerId !== listenerId) {
-          console.log(`[Listener ${listenerId}] Ignoring event - not active listener (active: ${globalListenerId})`);
           return;
         }
         
-        console.log(`[Listener ${listenerId}] PROCESSING event as active listener`);
-        
         const { token, finished } = event.payload;
-        console.log(`Event details - token: "${token}", finished: ${finished}`);
         
         if (finished) {
-          console.log(`[Listener ${listenerId}] Stream finished - completing message`); // Debug log
-          
           // Clear the timeout since we received proper completion
           if (globalStreamingTimeout) {
             clearTimeout(globalStreamingTimeout);
@@ -164,50 +151,54 @@ const ChatPage = () => {
           
           globalSetIsSending(false);
           
+          // Calculate tokens per second
+          const streamingDuration = (Date.now() - globalStreamingStartTime) / 1000;
+          const tokensPerSecond = globalTokenCounter / streamingDuration;
+          
           // Add a small delay to ensure any pending token updates complete first
           setTimeout(() => {
-            // Mark the last streaming message as complete
+            // Mark the last streaming message as complete and add tokens per second
             globalSetMessages(prev => {
               const newMessages = [...prev];
               const lastMessage = newMessages[newMessages.length - 1];
-              console.log('Last message before completion:', lastMessage);
               if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
                 lastMessage.isStreaming = false;
-                console.log('Marked streaming message as complete');
+                lastMessage.tokensPerSecond = tokensPerSecond;
               }
               return newMessages;
             });
             
-            // Now it's safe to clear the streaming message ID
-            console.log(`Clearing globalCurrentStreamingMessageId (was: ${globalCurrentStreamingMessageId})`);
+            // Clear streaming state
             globalCurrentStreamingMessageId = null;
+            globalTokenCounter = 0;
+            globalStreamingStartTime = null;
           }, 50); // Small delay to allow pending updates to complete
         } else if (token !== undefined && token !== null) { // Process all tokens including empty ones
-          console.log(`[Listener ${listenerId}] Processing token: "${token}" (length: ${token.length})`);
-          
           // Skip truly empty tokens but allow whitespace
           if (!token.trim() && token.length === 0) {
-            console.log(`[Listener ${listenerId}] Skipping empty token`);
             return;
           }
+          
           // Global deduplication: check if this is the same token we just processed
           const timeSinceLastToken = Date.now() - (globalLastProcessedToken?.timestamp || 0);
           
           if (globalLastProcessedToken?.token === token && timeSinceLastToken < 100) {
-            console.log(`[Listener ${listenerId}] Skipping duplicate token:`, token);
             return; // Skip this duplicate token
           }
           
           globalLastProcessedToken = { token, timestamp: Date.now() };
           globalTokenCounter++;
           
+          // Set start time on first token
+          if (globalTokenCounter === 1) {
+            globalStreamingStartTime = Date.now();
+          }
+          
           // Clear existing timeout 
           if (globalStreamingTimeout) {
             clearTimeout(globalStreamingTimeout);
             globalStreamingTimeout = null;
           }
-          
-          console.log(`[Listener ${listenerId}] Adding token #${globalTokenCounter}:`, token); // Debug log
           
           if (!globalCurrentStreamingMessageId) {
             // Start a new streaming message
@@ -219,12 +210,10 @@ const ChatPage = () => {
               isStreaming: true,
             };
             globalCurrentStreamingMessageId = newMessage.id;
-            console.log(`Started new streaming message with ID: ${globalCurrentStreamingMessageId}`);
             
             globalSetMessages(prev => [...prev, newMessage]);
           } else {
             // Append to existing streaming message
-            console.log(`Appending to existing message ID: ${globalCurrentStreamingMessageId}`);
             globalSetMessages(prev => {
               const newMessages = [...prev];
               const messageIndex = newMessages.findIndex(m => m.id === globalCurrentStreamingMessageId);
@@ -236,9 +225,6 @@ const ChatPage = () => {
                   content: existingMessage.content + token
                 };
                 newMessages[messageIndex] = updatedMessage;
-                console.log(`Updated message content: "${updatedMessage.content}"`);
-              } else {
-                console.log(`Could not find message with ID: ${globalCurrentStreamingMessageId}`);
               }
               
               return newMessages;
@@ -249,7 +235,6 @@ const ChatPage = () => {
       
       globalUnlisten = unlisten;
       unlistenRef.current = unlisten;
-      console.log(`Event listener setup complete (ID: ${listenerId})`);
     } catch (error) {
       console.error('Failed to setup event listeners:', error);
     }
@@ -335,10 +320,10 @@ const ChatPage = () => {
     setIsSending(true);
     
     // Reset global streaming state for new response
-    console.log(`handleSendMessage: Resetting globalCurrentStreamingMessageId (was: ${globalCurrentStreamingMessageId})`);
     globalCurrentStreamingMessageId = null;
     globalLastProcessedToken = null;
     globalTokenCounter = 0;
+    globalStreamingStartTime = null;
 
     try {
       // Use streaming chat function
@@ -412,7 +397,7 @@ const ChatPage = () => {
                         {message.content}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {new Date(message.timestamp).toLocaleTimeString()}
+                        {message.tokensPerSecond ? `${message.tokensPerSecond.toFixed(1)} tokens/sec` : new Date(message.timestamp).toLocaleTimeString()}
                       </Typography>
                     </Box>
                   </ListItem>

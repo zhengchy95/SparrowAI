@@ -971,17 +971,13 @@ pub async fn chat_with_loaded_model_streaming(message: String, app: AppHandle) -
                 if let Some(choice) = response.choices.first() {
                     let delta = &choice.delta;
                     if let Some(content) = &delta.content {
-                        println!("Streaming token: '{}'", content); // Debug log
-                        
-                        // Always emit tokens (remove duplicate filtering to debug)
-                        println!("Emitting token to frontend: '{}'", content);
                         let emit_result = app.emit("chat-token", serde_json::json!({
                             "token": content,
                             "finished": false
                         }));
                         
                         if let Err(e) = emit_result {
-                            println!("Failed to emit token: {}", e);
+                            eprintln!("Failed to emit token: {}", e);
                         }
                         
                         full_response.push_str(content);
@@ -989,7 +985,6 @@ pub async fn chat_with_loaded_model_streaming(message: String, app: AppHandle) -
                     
                     // Check if this is the last chunk AFTER processing content
                     if choice.finish_reason.is_some() {
-                        println!("Received finish_reason: {:?}", choice.finish_reason);
                         should_finish = true;
                     }
                 }
@@ -1011,7 +1006,6 @@ pub async fn chat_with_loaded_model_streaming(message: String, app: AppHandle) -
         "finished": true
     }));
     
-    println!("Streaming completed. Full response: {}", full_response);
     Ok(full_response)
 }
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -10,6 +10,13 @@ import {
   IconButton,
   LinearProgress,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
+  CircularProgress,
+  Skeleton,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -23,7 +30,10 @@ import {
 import useAppStore from '../store/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
 
-const ModelCard = ({ model }) => {
+const ModelCard = ({ modelId }) => {
+  const [model, setModel] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const { 
     setSelectedModel, 
     setModelDownloading, 
@@ -35,9 +45,29 @@ const ModelCard = ({ model }) => {
     showNotification 
   } = useAppStore();
   
-  const isDownloading = isModelDownloading(model.id);
-  const isDownloaded = isModelDownloaded(model.id);
-  const downloadProgress = getDownloadProgress(model.id);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  
+  useEffect(() => {
+    const fetchModelInfo = async () => {
+      try {
+        setLoading(true);
+        const modelInfo = await invoke('get_model_info', { modelId });
+        setModel(modelInfo);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch model info:', err);
+        setError(err.toString());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchModelInfo();
+  }, [modelId]);
+
+  const isDownloading = model ? isModelDownloading(model.id) : false;
+  const isDownloaded = model ? isModelDownloaded(model.id) : false;
+  const downloadProgress = model ? getDownloadProgress(model.id) : null;
 
   const handleDownload = async () => {
     setModelDownloading(model.id, true);
@@ -61,18 +91,14 @@ const ModelCard = ({ model }) => {
     }
   };
 
-  const handleDelete = async () => {
-    // Show confirmation dialog
-    const userConfirmed = window.confirm(`Are you sure you want to delete ${model.id}? This will permanently remove all downloaded files.`);
-    
-    if (!userConfirmed) {
-      console.log('User cancelled deletion');
-      return;
-    }
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true);
+  };
 
+  const handleDeleteConfirm = async () => {
+    setDeleteDialogOpen(false);
+    
     try {
-      console.log('User confirmed deletion, proceeding...');
-      
       // Always use default path (no custom download location)
       const result = await invoke('delete_downloaded_model', {
         modelId: model.id,
@@ -88,8 +114,12 @@ const ModelCard = ({ model }) => {
     }
   };
 
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+  };
+
   const formatNumber = (num) => {
-    if (!num) return 'N/A';
+    if (num === undefined || num === null) return 'N/A';
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toString();
@@ -97,8 +127,55 @@ const ModelCard = ({ model }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString();
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString();
+    } catch (e) {
+      return 'N/A';
+    }
   };
+
+
+  if (loading) {
+    return (
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            <Box sx={{ flex: 1 }}>
+              <Skeleton variant="text" width="60%" height={32} />
+              <Skeleton variant="text" width="40%" height={20} />
+            </Box>
+            <Skeleton variant="rectangular" width={40} height={40} />
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
+            <Skeleton variant="text" width={100} height={20} />
+            <Skeleton variant="text" width={80} height={20} />
+          </Box>
+          <Skeleton variant="text" width="80%" height={20} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography color="error" variant="body1">
+            Failed to load model: {modelId}
+          </Typography>
+          <Typography color="error" variant="body2">
+            {error}
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!model) {
+    return null;
+  }
 
   return (
     <Card sx={{ mb: 2 }}>
@@ -153,7 +230,7 @@ const ModelCard = ({ model }) => {
                     <IconButton
                       color="error"
                       size="small"
-                      onClick={handleDelete}
+                      onClick={handleDeleteClick}
                     >
                       <DeleteIcon />
                     </IconButton>
@@ -175,7 +252,7 @@ const ModelCard = ({ model }) => {
         </Box>
         
         <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
-          {model.downloads && (
+          {model.downloads !== undefined && (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <GetAppIcon sx={{ mr: 0.5, fontSize: 16 }} />
               <Typography variant="body2" color="text.secondary">
@@ -183,7 +260,7 @@ const ModelCard = ({ model }) => {
               </Typography>
             </Box>
           )}
-          {model.likes && (
+          {model.likes !== undefined && (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <ThumbUpIcon sx={{ mr: 0.5, fontSize: 16 }} />
               <Typography variant="body2" color="text.secondary">
@@ -212,9 +289,16 @@ const ModelCard = ({ model }) => {
           </Box>
         )}
 
-        <Typography variant="body2" color="text.secondary">
-          Last modified: {formatDate(model.last_modified)}
-        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            Last commit: {formatDate(model.last_modified)}
+          </Typography>
+          {model.sha && (
+            <Typography variant="body2" color="text.secondary">
+              SHA: {model.sha.substring(0, 7)}
+            </Typography>
+          )}
+        </Box>
 
         {isDownloading && downloadProgress && (
           <Box sx={{ mt: 2 }}>
@@ -232,6 +316,33 @@ const ModelCard = ({ model }) => {
           </Box>
         )}
       </CardContent>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Model
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-dialog-description">
+            Are you sure you want to delete <strong>{model.id}</strong>?
+            <br />
+            This will permanently remove all downloaded files and cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="primary">
+            No, Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+            Yes, Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 };
@@ -263,14 +374,14 @@ const ModelList = () => {
   }
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h5" gutterBottom>
+    <Box>
+      <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
         Search Results ({searchResults.length})
       </Typography>
       <Grid container spacing={2}>
-        {searchResults.map((model, index) => (
-          <Grid item xs={12} key={index}>
-            <ModelCard model={model} />
+        {searchResults.map((modelId, index) => (
+          <Grid item xs={12} key={modelId || index}>
+            <ModelCard modelId={modelId} />
           </Grid>
         ))}
       </Grid>
