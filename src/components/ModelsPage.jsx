@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -25,6 +25,8 @@ import {
   Search as SearchIcon,
   Download as DownloadIcon,
   Settings as SettingsIcon,
+  CheckCircle as LoadedIcon,
+  RadioButtonUnchecked as NotLoadedIcon,
 } from '@mui/icons-material';
 import SearchBar from './SearchBar';
 import ModelList from './ModelList';
@@ -33,9 +35,11 @@ import OvmsStatusDialog from './OvmsStatusDialog';
 import useAppStore from '../store/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
 
-const DownloadedModelCard = ({ modelId }) => {
+const DownloadedModelCard = ({ modelId, loadedModelId }) => {
   const { removeDownloadedModel, showNotification } = useAppStore();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  
+  const isLoaded = loadedModelId === modelId;
 
   const handleDeleteClick = () => {
     setDeleteDialogOpen(true);
@@ -97,6 +101,19 @@ const DownloadedModelCard = ({ modelId }) => {
           </Box>
           
           <Box sx={{ display: 'flex', gap: 1 }}>
+            <Tooltip title={isLoaded ? "Model is loaded" : "Model not loaded"}>
+              <IconButton
+                size="small"
+                sx={{ 
+                  color: isLoaded ? 'success.main' : 'text.disabled',
+                  cursor: 'default'
+                }}
+                disabled
+              >
+                {isLoaded ? <LoadedIcon /> : <NotLoadedIcon />}
+              </IconButton>
+            </Tooltip>
+            
             <Tooltip title="Open Model Folder">
               <IconButton
                 color="primary"
@@ -151,8 +168,26 @@ const DownloadedModelCard = ({ modelId }) => {
 const ModelsPage = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [ovmsStatusDialogOpen, setOvmsStatusDialogOpen] = useState(false);
+  const [loadedModelId, setLoadedModelId] = useState(null);
   const { downloadedModels } = useAppStore();
   const downloadedModelsList = Array.from(downloadedModels);
+
+  // Check loaded model when component mounts or when switching to downloaded models tab
+  useEffect(() => {
+    if (activeTab === 1) {
+      checkLoadedModel();
+    }
+  }, [activeTab]);
+
+  const checkLoadedModel = async () => {
+    try {
+      const result = await invoke('get_loaded_model');
+      setLoadedModelId(result);
+    } catch (error) {
+      console.error('Failed to get loaded model:', error);
+      setLoadedModelId(null);
+    }
+  };
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -243,7 +278,7 @@ const ModelsPage = () => {
               <Grid container spacing={2}>
                 {downloadedModelsList.map((modelId) => (
                   <Grid size={12} key={modelId}>
-                    <DownloadedModelCard modelId={modelId} />
+                    <DownloadedModelCard modelId={modelId} loadedModelId={loadedModelId} />
                   </Grid>
                 ))}
               </Grid>

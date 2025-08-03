@@ -4,7 +4,7 @@ use tauri::AppHandle;
 // Debug command to test OpenVINO model search
 #[tauri::command]
 pub async fn test_openvino_search() -> Result<String, String> {
-    match crate::search_models("".to_string(), Some(10)).await {
+    match crate::huggingface::search_models("".to_string(), Some(10)).await {
         Ok(result) => {
             let mut debug_info = Vec::new();
             debug_info.push(format!("Found {} OpenVINO models:", result.models.len()));

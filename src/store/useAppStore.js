@@ -17,6 +17,7 @@ const useAppStore = create(
       settings: {},
       settingsDialogOpen: false,
       sidebarCollapsed: false,
+      themeMode: 'dark', // 'light' or 'dark'
       
       // Notification state
       notification: null,
@@ -65,6 +66,7 @@ const useAppStore = create(
         settings: { ...state.settings, ...newSettings }
       })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      setThemeMode: (mode) => set({ themeMode: mode }),
       
       // Notification actions
       showNotification: (message, type = 'info') => set({ 
@@ -77,7 +79,8 @@ const useAppStore = create(
       partialize: (state) => ({ 
         settings: state.settings,
         downloadedModels: Array.from(state.downloadedModels),
-        sidebarCollapsed: state.sidebarCollapsed
+        sidebarCollapsed: state.sidebarCollapsed,
+        themeMode: state.themeMode
       }),
       merge: (persistedState, currentState) => {
         return {

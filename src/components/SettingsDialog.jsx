@@ -8,21 +8,35 @@ import {
   Box,
   Typography,
   IconButton,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Divider,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Settings as SettingsIcon,
+  LightMode as LightModeIcon,
+  DarkMode as DarkModeIcon,
 } from '@mui/icons-material';
 import useAppStore from '../store/useAppStore';
 
 const SettingsDialog = () => {
   const { 
     settingsDialogOpen, 
-    setSettingsDialogOpen
+    setSettingsDialogOpen,
+    themeMode,
+    setThemeMode
   } = useAppStore();
 
   const handleClose = () => {
     setSettingsDialogOpen(false);
+  };
+
+  const handleThemeChange = (event) => {
+    setThemeMode(event.target.value);
   };
 
   return (
@@ -47,11 +61,49 @@ const SettingsDialog = () => {
       <DialogContent>
         <Box sx={{ py: 2 }}>
           <Typography variant="h6" gutterBottom>
+            Appearance
+          </Typography>
+          
+          <FormControl component="fieldset" sx={{ mb: 3 }}>
+            <FormLabel component="legend" sx={{ mb: 2, fontWeight: 500 }}>
+              Theme Mode
+            </FormLabel>
+            <RadioGroup
+              value={themeMode}
+              onChange={handleThemeChange}
+              sx={{ ml: 1 }}
+            >
+              <FormControlLabel 
+                value="light" 
+                control={<Radio />} 
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LightModeIcon sx={{ fontSize: 20 }} />
+                    Light
+                  </Box>
+                }
+              />
+              <FormControlLabel 
+                value="dark" 
+                control={<Radio />} 
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <DarkModeIcon sx={{ fontSize: 20 }} />
+                    Dark
+                  </Box>
+                }
+              />
+            </RadioGroup>
+          </FormControl>
+
+          <Divider sx={{ my: 3 }} />
+
+          <Typography variant="h6" gutterBottom>
             Application Settings
           </Typography>
           
           <Typography variant="body2" color="text.secondary">
-            No settings available at this time. Application uses default configurations.
+            Additional settings coming soon.
           </Typography>
         </Box>
       </DialogContent>
