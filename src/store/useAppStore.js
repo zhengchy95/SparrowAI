@@ -14,7 +14,9 @@ const useAppStore = create(
       downloadedModels: new Set(),
       
       // Settings state
-      settings: {},
+      settings: {
+        includeConversationHistory: true, // Default to true
+      },
       settingsDialogOpen: false,
       sidebarCollapsed: false,
       themeMode: 'dark', // 'light' or 'dark'

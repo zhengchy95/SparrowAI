@@ -424,7 +424,9 @@ const ChatPage = () => {
       // Use streaming chat function
       console.log('Sending message to model:', messageContent);
       await invoke('chat_with_loaded_model_streaming', { 
-        message: messageContent
+        message: messageContent,
+        sessionId: activeChatSessionId,
+        includeHistory: settings.includeConversationHistory || false
       });
       console.log('Message sent, waiting for streaming response...');
       

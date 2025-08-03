@@ -14,12 +14,14 @@ import {
   FormControlLabel,
   Radio,
   Divider,
+  Switch,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Settings as SettingsIcon,
   LightMode as LightModeIcon,
   DarkMode as DarkModeIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import useAppStore from '../store/useAppStore';
 
@@ -28,7 +30,9 @@ const SettingsDialog = () => {
     settingsDialogOpen, 
     setSettingsDialogOpen,
     themeMode,
-    setThemeMode
+    setThemeMode,
+    settings,
+    updateSettings
   } = useAppStore();
 
   const handleClose = () => {
@@ -37,6 +41,10 @@ const SettingsDialog = () => {
 
   const handleThemeChange = (event) => {
     setThemeMode(event.target.value);
+  };
+
+  const handleConversationHistoryChange = (event) => {
+    updateSettings({ includeConversationHistory: event.target.checked });
   };
 
   return (
@@ -95,6 +103,36 @@ const SettingsDialog = () => {
               />
             </RadioGroup>
           </FormControl>
+
+          <Divider sx={{ my: 3 }} />
+
+          <Typography variant="h6" gutterBottom>
+            Chat Settings
+          </Typography>
+          
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.includeConversationHistory || false}
+                onChange={handleConversationHistoryChange}
+                color="primary"
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <HistoryIcon sx={{ fontSize: 20 }} />
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>
+                    Include Conversation History
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Include previous messages in AI responses for better context
+                  </Typography>
+                </Box>
+              </Box>
+            }
+            sx={{ alignItems: 'flex-start', mb: 2 }}
+          />
 
           <Divider sx={{ my: 3 }} />
 

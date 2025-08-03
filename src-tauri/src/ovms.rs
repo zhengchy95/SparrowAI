@@ -920,7 +920,12 @@ pub async fn chat_with_loaded_model(message: String) -> Result<String, String> {
 
 // Chat with the currently loaded model using streaming
 #[tauri::command]
-pub async fn chat_with_loaded_model_streaming(message: String, app: AppHandle) -> Result<String, String> {
+pub async fn chat_with_loaded_model_streaming(
+    message: String, 
+    session_id: Option<String>,
+    include_history: Option<bool>,
+    app: AppHandle
+) -> Result<String, String> {
     // Check if a model is loaded and get its name
     let loaded_model_mutex = LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
     let model_name = {
@@ -935,18 +940,39 @@ pub async fn chat_with_loaded_model_streaming(message: String, app: AppHandle) -
     println!("Using streaming model: {}", model_name);
     
     // Create the messages vector
-    let messages = vec![
+    let mut messages = vec![
         ChatCompletionMessage {
             role: ChatCompletionMessageRole::System,
             content: Some("You're an AI assistant that provides helpful responses.".to_string()),
             ..Default::default()
-        },
-        ChatCompletionMessage {
-            role: ChatCompletionMessageRole::User,
-            content: Some(message.clone()),
-            ..Default::default()
         }
     ];
+
+    // Include conversation history if requested and session_id is provided
+    if include_history.unwrap_or(false) && session_id.is_some() {
+        if let Ok(history) = crate::chat_sessions::get_conversation_history(session_id.clone().unwrap()).await {
+            for msg in history {
+                let role = match msg.role.as_str() {
+                    "user" => ChatCompletionMessageRole::User,
+                    "assistant" => ChatCompletionMessageRole::Assistant,
+                    _ => continue, // Skip unknown roles
+                };
+                
+                messages.push(ChatCompletionMessage {
+                    role,
+                    content: Some(msg.content),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    // Add the current user message
+    messages.push(ChatCompletionMessage {
+        role: ChatCompletionMessageRole::User,
+        content: Some(message.clone()),
+        ..Default::default()
+    });
 
     println!("Sending streaming message: {}", message);
     
