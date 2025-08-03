@@ -15,6 +15,9 @@ import {
   Radio,
   Divider,
   Switch,
+  TextField,
+  Slider,
+  Grid,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -22,6 +25,8 @@ import {
   LightMode as LightModeIcon,
   DarkMode as DarkModeIcon,
   History as HistoryIcon,
+  Tune as TuneIcon,
+  TextFields as TextFieldsIcon,
 } from '@mui/icons-material';
 import useAppStore from '../store/useAppStore';
 
@@ -45,6 +50,39 @@ const SettingsDialog = () => {
 
   const handleConversationHistoryChange = (event) => {
     updateSettings({ includeConversationHistory: event.target.checked });
+  };
+
+  const handleSystemPromptChange = (event) => {
+    updateSettings({ systemPrompt: event.target.value });
+  };
+
+  const handleTemperatureChange = (event, newValue) => {
+    updateSettings({ temperature: newValue });
+  };
+
+  const handleTopPChange = (event, newValue) => {
+    updateSettings({ topP: newValue });
+  };
+
+  const handleSeedChange = (event) => {
+    const value = event.target.value;
+    const parsed = value === '' ? null : parseInt(value);
+    // Ensure seed is positive (u64 requirement)
+    updateSettings({ seed: parsed && parsed >= 0 ? parsed : null });
+  };
+
+  const handleMaxTokensChange = (event) => {
+    const value = event.target.value;
+    const parsed = value === '' ? null : parseInt(value);
+    // Ensure positive values
+    updateSettings({ maxTokens: parsed && parsed > 0 ? parsed : null });
+  };
+
+  const handleMaxCompletionTokensChange = (event) => {
+    const value = event.target.value;
+    const parsed = value === '' ? null : parseInt(value);
+    // Ensure positive values
+    updateSettings({ maxCompletionTokens: parsed && parsed > 0 ? parsed : null });
   };
 
   return (
@@ -133,6 +171,124 @@ const SettingsDialog = () => {
             }
             sx={{ alignItems: 'flex-start', mb: 2 }}
           />
+
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="body2" fontWeight={500} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TextFieldsIcon sx={{ fontSize: 20 }} />
+              System Prompt
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              value={settings.systemPrompt ?? "You're an AI assistant that provides helpful responses."}
+              onChange={handleSystemPromptChange}
+              placeholder="Enter system prompt for the AI assistant..."
+              variant="outlined"
+              size="small"
+              sx={{ mb: 2 }}
+            />
+          </Box>
+
+          <Typography variant="body2" fontWeight={500} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TuneIcon sx={{ fontSize: 20 }} />
+            Model Parameters
+          </Typography>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body2" gutterBottom>
+                Temperature: {settings.temperature ?? 0.7}
+              </Typography>
+              <Slider
+                value={settings.temperature ?? 0.7}
+                onChange={handleTemperatureChange}
+                min={0}
+                max={2}
+                step={0.1}
+                marks={[
+                  { value: 0, label: '0' },
+                  { value: 1, label: '1' },
+                  { value: 2, label: '2' }
+                ]}
+                valueLabelDisplay="auto"
+                size="small"
+              />
+              <Typography variant="caption" color="text.secondary">
+                Controls randomness (0 = focused, 2 = creative)
+              </Typography>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body2" gutterBottom>
+                Top P: {settings.topP ?? 1.0}
+              </Typography>
+              <Slider
+                value={settings.topP ?? 1.0}
+                onChange={handleTopPChange}
+                min={0}
+                max={1}
+                step={0.05}
+                marks={[
+                  { value: 0, label: '0' },
+                  { value: 0.5, label: '0.5' },
+                  { value: 1, label: '1' }
+                ]}
+                valueLabelDisplay="auto"
+                size="small"
+              />
+              <Typography variant="caption" color="text.secondary">
+                Nucleus sampling parameter
+              </Typography>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Grid container spacing={2}>
+                <Grid item xs={4}>
+                  <TextField
+                    label="Seed"
+                    type="number"
+                    value={settings.seed ?? ''}
+                    onChange={handleSeedChange}
+                    placeholder="Random"
+                    variant="outlined"
+                    size="small"
+                    fullWidth
+                    inputProps={{ min: 0 }}
+                    helperText="For reproducible outputs"
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    label="Max Tokens"
+                    type="number"
+                    value={settings.maxTokens ?? ''}
+                    onChange={handleMaxTokensChange}
+                    placeholder="Auto"
+                    variant="outlined"
+                    size="small"
+                    fullWidth
+                    inputProps={{ min: 1 }}
+                    helperText="Total token limit"
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    label="Max Completion Tokens"
+                    type="number"
+                    value={settings.maxCompletionTokens ?? ''}
+                    onChange={handleMaxCompletionTokensChange}
+                    placeholder="Auto"
+                    variant="outlined"
+                    size="small"
+                    fullWidth
+                    inputProps={{ min: 1 }}
+                    helperText="Response token limit"
+                  />
+                </Grid>
+              </Grid>
+            </Grid>
+          </Grid>
 
           <Divider sx={{ my: 3 }} />
 

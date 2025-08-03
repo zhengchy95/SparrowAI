@@ -425,8 +425,14 @@ const ChatPage = () => {
       console.log('Sending message to model:', messageContent);
       await invoke('chat_with_loaded_model_streaming', { 
         message: messageContent,
-        sessionId: activeChatSessionId,
-        includeHistory: settings.includeConversationHistory || false
+        session_id: activeChatSessionId,
+        include_history: settings.includeConversationHistory || false,
+        system_prompt: settings.systemPrompt,
+        temperature: settings.temperature,
+        top_p: settings.topP,
+        seed: settings.seed,
+        max_tokens: settings.maxTokens,
+        max_completion_tokens: settings.maxCompletionTokens
       });
       console.log('Message sent, waiting for streaming response...');
       

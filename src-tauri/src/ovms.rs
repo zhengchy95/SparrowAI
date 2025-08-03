@@ -924,6 +924,12 @@ pub async fn chat_with_loaded_model_streaming(
     message: String, 
     session_id: Option<String>,
     include_history: Option<bool>,
+    system_prompt: Option<String>,
+    temperature: Option<f64>,
+    top_p: Option<f64>,
+    seed: Option<u64>,
+    max_tokens: Option<u32>,
+    max_completion_tokens: Option<u32>,
     app: AppHandle
 ) -> Result<String, String> {
     // Check if a model is loaded and get its name
@@ -940,10 +946,14 @@ pub async fn chat_with_loaded_model_streaming(
     println!("Using streaming model: {}", model_name);
     
     // Create the messages vector
+    let system_message = system_prompt.unwrap_or_else(|| 
+        "You're an AI assistant that provides helpful responses.".to_string()
+    );
+    
     let mut messages = vec![
         ChatCompletionMessage {
             role: ChatCompletionMessageRole::System,
-            content: Some("You're an AI assistant that provides helpful responses.".to_string()),
+            content: Some(system_message),
             ..Default::default()
         }
     ];
@@ -979,9 +989,32 @@ pub async fn chat_with_loaded_model_streaming(
     let credentials = Credentials::new("unused", "http://localhost:8000/v3");
     
     // Create streaming chat completion
-    let mut chat_stream = ChatCompletion::builder(&model_name, messages.clone())
+    let mut builder = ChatCompletion::builder(&model_name, messages.clone())
         .credentials(credentials)
-        .stream(true) // Enable streaming
+        .stream(true); // Enable streaming
+    
+    // Add optional parameters if provided
+    if let Some(temp) = temperature {
+        builder = builder.temperature(temp as f32);
+    }
+    
+    if let Some(top_p_val) = top_p {
+        builder = builder.top_p(top_p_val as f32);
+    }
+    
+    if let Some(seed_val) = seed {
+        builder = builder.seed(seed_val);
+    }
+    
+    if let Some(max_tokens_val) = max_tokens {
+        builder = builder.max_tokens(max_tokens_val);
+    }
+    
+    if let Some(max_completion_tokens_val) = max_completion_tokens {
+        builder = builder.max_completion_tokens(max_completion_tokens_val);
+    }
+    
+    let mut chat_stream = builder
         .create_stream()
         .await
         .map_err(|e| format!("Failed to create chat stream: {}", e))?;
