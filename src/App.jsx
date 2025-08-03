@@ -186,7 +186,7 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      <Box sx={{ display: 'flex', height: '100vh' }}>
         <Sidebar 
           currentPage={currentPage} 
           onPageChange={setCurrentPage}
@@ -208,6 +208,8 @@ function App() {
             display: 'flex',
             flexDirection: 'column',
             maxWidth: '100%',
+            height: '100vh',
+            overflow: 'hidden',
           }}
         >
           <Box sx={{ 
@@ -217,6 +219,7 @@ function App() {
             height: '100%',
             display: 'flex',
             flexDirection: 'column',
+            overflow: 'hidden',
           }}>
             {renderPage()}
           </Box>

@@ -478,15 +478,12 @@ const ChatPage = () => {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-  
-
-
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* Chat Messages */}
-      <Card sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', mb: 2, boxShadow: 'none', border: 'none' }}>
-        <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 0 }}>
-          <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
+      <Card sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', mb: 2, boxShadow: 'none', border: 'none', minHeight: 0 }}>
+        <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 0, minHeight: 0 }}>
+          <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2, minHeight: 0 }}>
             {(!Array.isArray(currentChatMessages) || currentChatMessages.length === 0) ? (
               <Box sx={{ 
                 textAlign: 'center', 
@@ -539,6 +536,7 @@ const ChatPage = () => {
       <Paper sx={{ 
         p: 3, 
         borderRadius: '16px',
+        flexShrink: 0,
       }}>
         {/* First Row: Full Width Input Field */}
         <Box sx={{ mb: 2 }}>
@@ -581,13 +579,14 @@ const ChatPage = () => {
           )}
           
           <FormControl sx={{ minWidth: 180, maxWidth: 250 }}>
-            <InputLabel>Model</InputLabel>
+            <InputLabel sx={{ top: '-8px', '&.MuiInputLabel-shrink': { top: '0px' } }}>Model</InputLabel>
             <Select
               value={selectedModel}
               onChange={(e) => handleModelChange(e.target.value)}
               label="Model"
               size="small"
               disabled={isLoadingModel}
+            
             >
               {downloadedModelsList.map((modelId) => (
                 <MenuItem key={modelId} value={modelId}>

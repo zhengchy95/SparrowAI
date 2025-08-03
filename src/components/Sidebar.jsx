@@ -55,7 +55,6 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
       id: 'models',
       label: 'Models',
       icon: <SearchIcon />,
-      description: 'Search & Manage Models',
       badge: downloadedModels.size > 0 ? downloadedModels.size : null,
     },
   ];
@@ -76,6 +75,11 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
       const result = await invoke('get_chat_sessions');
       setChatSessions(result.sessions || {});
       setActiveChatSessionId(result.active_session_id);
+      
+      // If no active session exists, create a new chat automatically
+      if (!result.active_session_id) {
+        await createNewChat();
+      }
     } catch (error) {
       console.error('Failed to load chat sessions:', error);
       showNotification('Failed to load chat sessions', 'error');
@@ -158,29 +162,28 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
       }}
     >
       {/* Header */}
-      <Box sx={{ p: isCollapsed ? 1 : 3, textAlign: 'center', position: 'relative' }}>
-        {!isCollapsed && (
-          <>
-            <Typography variant="h5" component="h1" fontWeight="bold" color="primary">
-              SparrowAI
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              AI Assistant Platform
-            </Typography>
-          </>
-        )}
-        
+      <Box sx={{ p: 1, textAlign: 'center', position: 'relative', mb: 2 }}>
         <IconButton
           onClick={onToggleCollapse}
           sx={{
             position: isCollapsed ? 'static' : 'absolute',
-            top: isCollapsed ? 0 : 8,
-            right: isCollapsed ? 0 : 8,
+            top: isCollapsed ? 0 : 6,
+            left: isCollapsed ? 0 : 8,
             mt: isCollapsed ? 1 : 0,
           }}
         >
           {isCollapsed ? <MenuIcon /> : <MenuOpenIcon />}
         </IconButton>
+        {!isCollapsed && (
+ 
+            <Typography variant="h6" component="h3" fontWeight="bold" color="primary">
+              SparrowAI
+            </Typography>
+            
+  
+        )}
+        
+        
       </Box>
 
       {/* New Chat Button */}
@@ -234,7 +237,7 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
         {menuItems.map((item) => (
           <ListItem key={item.id} disablePadding sx={{ mb: 1 }}>
             <Tooltip 
-              title={isCollapsed ? `${item.label} - ${item.description}` : ''} 
+              title={isCollapsed ? item.label : ''} 
               placement="right"
               arrow
             >
@@ -272,13 +275,9 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
                   <>
                     <ListItemText 
                       primary={item.label}
-                      secondary={currentPage !== item.id ? item.description : null}
                       primaryTypographyProps={{
                         fontSize: '0.95rem',
                         fontWeight: currentPage === item.id ? 600 : 400,
-                      }}
-                      secondaryTypographyProps={{
-                        fontSize: '0.8rem',
                       }}
                     />
                     {item.badge && (

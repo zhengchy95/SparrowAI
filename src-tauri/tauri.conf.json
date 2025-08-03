@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "sparrow",
+        "title": "SparrowAI",
         "width": 1280,
         "height": 720
       }
