@@ -392,7 +392,8 @@ pub fn run() {
                 chat_sessions::delete_chat_session,
                 chat_sessions::set_active_chat_session,
                 chat_sessions::add_message_to_session,
-                chat_sessions::get_session_messages
+                chat_sessions::get_session_messages,
+                chat_sessions::get_conversation_history
             ]
         )
         .setup(|app| {

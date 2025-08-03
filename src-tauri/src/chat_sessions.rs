@@ -253,3 +253,20 @@ pub async fn get_session_messages(session_id: String) -> Result<Vec<ChatMessage>
     
     Ok(session.messages.clone())
 }
+
+#[tauri::command]
+pub async fn get_conversation_history(session_id: String) -> Result<Vec<ChatMessage>, String> {
+    let storage = load_chat_sessions()?;
+    
+    let session = storage.sessions.get(&session_id)
+        .ok_or_else(|| format!("Chat session not found: {}", session_id))?;
+    
+    // Return all messages except any currently streaming ones
+    let messages: Vec<ChatMessage> = session.messages
+        .iter()
+        .filter(|msg| msg.role == "user" || msg.role == "assistant")
+        .cloned()
+        .collect();
+    
+    Ok(messages)
+}
