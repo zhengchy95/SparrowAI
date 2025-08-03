@@ -280,15 +280,23 @@ pub async fn run_ovms(app_handle: AppHandle) -> Result<String, String> {
     }
 
     // Run ovms.exe with config file
-    let mut child = Command::new(&ovms_exe)
-        .args([
+    let mut cmd = Command::new(&ovms_exe);
+    cmd.args([
             "--config_path", &config_path.to_string_lossy(),
             "--rest_port", "8000",
             "--log_level", "INFO"
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+        
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+        
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to start OVMS: {}", e))?;
 
     // Wait a moment for the server to start
@@ -470,15 +478,23 @@ pub async fn run_ovms_with_config(app_handle: AppHandle) -> Result<String, Strin
     }
 
     // Run ovms.exe with config file instead of individual parameters
-    let mut child = Command::new(&ovms_exe)
-        .args([
+    let mut cmd = Command::new(&ovms_exe);
+    cmd.args([
             "--config_path", &config_path.to_string_lossy(),
             "--rest_port", "8000",
             "--file_system_poll_wait_seconds", "0" // Disable auto-reload for manual control
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+        
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+        
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to start OVMS: {}", e))?;
 
     // Wait a moment for the server to start
@@ -531,16 +547,24 @@ pub async fn download_ovms_model(app_handle: AppHandle, model_name: String) -> R
     // Use OVMS to pull/download the model by starting it with the config
     println!("Starting OVMS model download for: {}", model_name);
     
-    let child = Command::new(&ovms_exe)
-        .args([
+    let mut cmd = Command::new(&ovms_exe);
+    cmd.args([
             "--config_path", &temp_config_path.to_string_lossy(),
             "--rest_port", "8001", // Use different port to avoid conflicts
             "--log_level", "INFO",
             "--exit_after_model_load" // Exit after loading models (if supported)
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+        
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+        
+    let child = cmd.spawn()
         .map_err(|e| format!("Failed to start OVMS for model download: {}", e))?;
 
     // Wait for the process to complete (model download)
@@ -636,15 +660,23 @@ pub async fn start_ovms_server(app_handle: &AppHandle) -> Result<(), String> {
     println!("Starting OVMS server...");
     
     // Start OVMS process
-    let mut child = Command::new(&ovms_exe)
-        .args([
+    let mut cmd = Command::new(&ovms_exe);
+    cmd.args([
             "--config_path", &config_path.to_string_lossy(),
             "--rest_port", "8000",
             "--log_level", "INFO"
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+        
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+        
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to start OVMS: {}", e))?;
     
     // Wait a moment for server to start
