@@ -179,9 +179,9 @@ const Sidebar = ({
           onClick={onToggleCollapse}
           sx={{
             position: isCollapsed ? "static" : "absolute",
-            top: isCollapsed ? 0 : 6,
-            left: isCollapsed ? 0 : 8,
-            mt: isCollapsed ? 1 : 0,
+            top: isCollapsed ? 0 : 12,
+            left: isCollapsed ? 0 : 16,
+            mt: 0,
           }}
         >
           {isCollapsed ? <MenuIcon /> : <MenuOpenIcon />}
@@ -192,6 +192,7 @@ const Sidebar = ({
             component="h3"
             fontWeight="bold"
             color="primary"
+            sx={{ mt: 0.8 }}
           >
             SparrowAI
           </Typography>
@@ -284,54 +285,15 @@ const Sidebar = ({
                   {item.icon}
                 </ListItemIcon>
                 {!isCollapsed && (
-                  <>
-                    <ListItemText
-                      primary={item.label}
-                      primaryTypographyProps={{
+                  <ListItemText
+                    primary={item.label}
+                    slotProps={{
+                      typography: {
                         fontSize: "0.95rem",
                         fontWeight: currentPage === item.id ? 600 : 400,
-                      }}
-                    />
-                    {item.badge && (
-                      <Box
-                        sx={{
-                          backgroundColor: theme.palette.error.main,
-                          color: "white",
-                          borderRadius: "50%",
-                          minWidth: 20,
-                          height: 20,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "0.75rem",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {item.badge}
-                      </Box>
-                    )}
-                  </>
-                )}
-                {isCollapsed && item.badge && (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: 4,
-                      right: 4,
-                      backgroundColor: theme.palette.error.main,
-                      color: "white",
-                      borderRadius: "50%",
-                      minWidth: 16,
-                      height: 16,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.7rem",
-                      fontWeight: "bold",
+                      },
                     }}
-                  >
-                    {item.badge}
-                  </Box>
+                  />
                 )}
               </ListItemButton>
             </Tooltip>
@@ -365,7 +327,7 @@ const Sidebar = ({
                 sx={{
                   borderRadius: 2,
                   justifyContent: isCollapsed ? "center" : "initial",
-                  px: isCollapsed ? 2 : 2,
+                  px: 2,
                   py: 1,
                   "&.Mui-selected": {
                     backgroundColor: theme.palette.action.selected,
@@ -386,12 +348,16 @@ const Sidebar = ({
                 {!isCollapsed && (
                   <ListItemText
                     primary={temporarySession.title}
-                    primaryTypographyProps={{
-                      fontSize: "0.875rem",
-                      fontWeight:
-                        activeChatSessionId === temporarySession.id ? 500 : 400,
-                      noWrap: true,
-                      fontStyle: "italic",
+                    slotProps={{
+                      typography: {
+                        fontSize: "0.875rem",
+                        fontWeight:
+                          activeChatSessionId === temporarySession.id
+                            ? 500
+                            : 400,
+                        noWrap: true,
+                        fontStyle: "italic",
+                      },
                       opacity: 0.8,
                     }}
                   />
@@ -433,7 +399,7 @@ const Sidebar = ({
                 >
                   <ListItemIcon
                     sx={{
-                      minWidth: 32,
+                      minWidth: 48,
                       justifyContent: "center",
                     }}
                   >
@@ -443,11 +409,13 @@ const Sidebar = ({
                     <>
                       <ListItemText
                         primary={session.title}
-                        primaryTypographyProps={{
-                          fontSize: "0.875rem",
-                          fontWeight:
-                            activeChatSessionId === session.id ? 500 : 400,
-                          noWrap: true,
+                        slotProps={{
+                          primary: {
+                            fontSize: "0.875rem",
+                            fontWeight:
+                              activeChatSessionId === session.id ? 500 : 400,
+                            noWrap: true,
+                          },
                         }}
                       />
                       <IconButton

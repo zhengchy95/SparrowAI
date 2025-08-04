@@ -1,12 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { ThemeProvider } from "@mui/material/styles";
-import { CssBaseline, Box, Typography, Card, CardContent } from "@mui/material";
+import { 
+  CssBaseline, 
+  Box, 
+  Typography, 
+  LinearProgress, 
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Backdrop,
+  CircularProgress
+} from "@mui/material";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import Sidebar from "./components/Sidebar";
 import ModelsPage from "./components/ModelsPage";
 import SettingsDialog from "./components/SettingsDialog";
 import NotificationSnackbar from "./components/NotificationSnackbar";
-import InitialSetup from "./components/InitialSetup";
 import useDownloadedModels from "./hooks/useDownloadedModels";
 import useAppStore from "./store/useAppStore";
 import useChatStore from "./store/useChatStore";
@@ -17,8 +27,8 @@ import ChatPage from "./components/ChatPage";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("chat");
-  const [isSetupComplete, setIsSetupComplete] = useState(true);
-  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+  const [initStatus, setInitStatus] = useState(null);
+  const [showInitDialog, setShowInitDialog] = useState(false);
   const {
     sidebarCollapsed,
     setSidebarCollapsed,
@@ -69,54 +79,58 @@ function App() {
     createNewChatOnStartup();
   }, []); // Run only once on app mount
 
-  // Check if initial setup is needed
+  // Monitor OVMS initialization status
   useEffect(() => {
-    const checkSetupStatus = async () => {
+    const checkInitStatus = async () => {
       try {
-        showNotification("Checking OVMS server status...", "info");
-        const ovmsPresent = await invoke("check_ovms_present");
-        setIsSetupComplete(ovmsPresent);
-
-        // If OVMS is present, check if it's running first
-        if (ovmsPresent) {
-          try {
-            // First check if OVMS is already running
-            await invoke("check_ovms_status");
-            setIsOvmsRunning(true);
-            showNotification("OVMS server is running", "success");
-          } catch {
-            // OVMS not running, start it
-            try {
-              showNotification("Starting OVMS server...", "info", 10000);
-              await invoke("start_ovms_server");
-              setIsOvmsRunning(true);
-              showNotification("OVMS server started successfully", "success");
-            } catch (serverError) {
-              console.warn("Failed to start OVMS server:", serverError);
-              setIsOvmsRunning(false);
-              showNotification(
-                `Failed to start OVMS server: ${serverError}`,
-                "error"
-              );
-              // Don't fail the app if server startup fails
-            }
-          }
-        } else {
+        const status = await invoke("get_initialization_status");
+        setInitStatus(status);
+        
+        // Show dialog if initialization is in progress
+        if (!status.is_complete && !status.has_error) {
+          setShowInitDialog(true);
+        }
+        
+        if (status.is_complete) {
+          setIsOvmsRunning(true);
+          showNotification("OVMS initialized successfully", "success");
+        } else if (status.has_error) {
           setIsOvmsRunning(false);
-          showNotification("OVMS server not found - setup required", "warning");
+          showNotification(status.error_message || "OVMS initialization failed", "error");
         }
       } catch (error) {
-        console.error("Failed to check OVMS status:", error);
-        setIsOvmsRunning(false);
-        showNotification(`Failed to check OVMS status: ${error}`, "error");
-        // If we can't check, assume setup is needed
-        setIsSetupComplete(false);
-      } finally {
-        setIsCheckingSetup(false);
+        console.error("Failed to get initialization status:", error);
       }
     };
 
-    checkSetupStatus();
+    // Check initial status
+    checkInitStatus();
+
+    // Listen for status updates from Rust
+    const unlisten = listen("ovms-init-status", (event) => {
+      const status = event.payload;
+      setInitStatus(status);
+      
+      // Show dialog when initialization starts
+      if (!status.is_complete && !status.has_error) {
+        setShowInitDialog(true);
+      }
+      
+      if (status.is_complete) {
+        setIsOvmsRunning(true);
+        showNotification("OVMS initialized successfully", "success");
+        // Close dialog after a brief delay to show completion
+        setTimeout(() => setShowInitDialog(false), 1000);
+      } else if (status.has_error) {
+        setIsOvmsRunning(false);
+        showNotification(status.error_message || "OVMS initialization failed", "error");
+        setShowInitDialog(false);
+      }
+    });
+
+    return () => {
+      unlisten.then(f => f());
+    };
   }, []);
 
   const renderPage = () => {
@@ -130,17 +144,7 @@ function App() {
     }
   };
 
-  // Show initial setup if OVMS is not present
-  if (!isSetupComplete) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <InitialSetup onSetupComplete={() => setIsSetupComplete(true)} />
-      </ThemeProvider>
-    );
-  }
-
-  // Show main app if setup is complete
+  // Show main app
   const DRAWER_WIDTH = 240;
   const DRAWER_WIDTH_COLLAPSED = 64;
   const drawerWidth = sidebarCollapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
@@ -189,6 +193,68 @@ function App() {
 
         <SettingsDialog />
         <NotificationSnackbar />
+        
+        {/* OVMS Initialization Dialog */}
+        <Dialog
+          open={showInitDialog}
+          disableEscapeKeyDown
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              backgroundColor: "background.paper",
+              backdropFilter: "blur(10px)",
+            }
+          }}
+        >
+          <DialogTitle sx={{ textAlign: "center", pb: 1 }}>
+            <Typography
+              variant="h5"
+              component="h2"
+              sx={{
+                fontWeight: "bold",
+                color: "primary.main",
+              }}
+            >
+              SparrowAI
+            </Typography>
+            <Typography variant="subtitle1" color="text.secondary">
+              Initializing OVMS...
+            </Typography>
+          </DialogTitle>
+          
+          <DialogContent sx={{ textAlign: "center", pb: 3 }}>
+            {initStatus && (
+              <Box sx={{ my: 2 }}>
+                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                  <CircularProgress size={20} sx={{ mr: 2, color: "primary.main" }} />
+                  <Typography variant="body1" color="text.primary">
+                    {initStatus.message}
+                  </Typography>
+                </Box>
+                
+                <LinearProgress
+                  variant="determinate"
+                  value={initStatus.progress}
+                  sx={{
+                    height: 8,
+                    borderRadius: 4,
+                    mb: 1,
+                    backgroundColor: "action.hover",
+                    "& .MuiLinearProgress-bar": {
+                      borderRadius: 4,
+                      backgroundColor: "primary.main",
+                    },
+                  }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  {initStatus.progress}%
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+        </Dialog>
       </Box>
     </ThemeProvider>
   );
