@@ -111,8 +111,8 @@ node {{
         ::write(&graph_path, graph_content)
         .map_err(|e| format!("Failed to write graph.pbtxt: {}", e))?;
 
-    println!("Generated graph.pbtxt for model: {}", model_name);
-    println!("Graph file location: {}", graph_path.display());
+    // Only print if model graph generation is successful
+    println!("graph.pbtxt generated for model: {} at {}", model_name, graph_path.display());
 
     Ok(())
 }

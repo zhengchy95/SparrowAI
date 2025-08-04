@@ -43,8 +43,6 @@ function App() {
   useEffect(() => {
     const createNewChatOnStartup = async () => {
       try {
-        console.log("App.jsx: Starting new chat session creation");
-
         // Clear any existing state first
         clearTemporarySession();
         clearCurrentChatMessages();
@@ -57,16 +55,12 @@ function App() {
           title: "New Chat",
         });
 
-        console.log("App.jsx: Created temporary session:", newSession);
-
         // Set this as the temporary session (not saved to storage yet)
         setTemporarySession(newSession);
         setActiveChatSessionId(newSession.id);
 
         // Force clear messages again after setting the session
         clearCurrentChatMessages();
-
-        console.log("App.jsx: Set temporary session with ID:", newSession.id);
       } catch (error) {
         console.error("Failed to create new chat session on startup:", error);
       }
@@ -88,16 +82,13 @@ function App() {
           try {
             // First check if OVMS is already running
             await invoke("check_ovms_status");
-            console.log("OVMS is already running");
             setIsOvmsRunning(true);
             showNotification("OVMS server is running", "success");
           } catch {
             // OVMS not running, start it
             try {
-              console.log("OVMS found but not running, starting server...");
               showNotification("Starting OVMS server...", "info", 10000);
               await invoke("start_ovms_server");
-              console.log("OVMS server started successfully");
               setIsOvmsRunning(true);
               showNotification("OVMS server started successfully", "success");
             } catch (serverError) {

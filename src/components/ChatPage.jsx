@@ -91,51 +91,22 @@ const ChatPage = () => {
 
   // Load messages when active chat session changes
   useEffect(() => {
-    console.log("ChatPage: Loading messages for session", {
-      activeChatSessionId,
-      temporarySession: temporarySession
-        ? {
-            id: temporarySession.id,
-            messageCount: temporarySession.messages?.length || 0,
-          }
-        : null,
-    });
+    // ...removed debug log...
 
     if (activeChatSessionId) {
-      // Check if this is a temporary session
       if (temporarySession && temporarySession.id === activeChatSessionId) {
-        // For temporary sessions, just use the messages from the temporary session
-        console.log(
-          "Using temporary session messages:",
-          temporarySession.messages?.length || 0,
-          "Messages:",
-          temporarySession.messages
-        );
-        // Force clear and set messages for temporary session
         const messagesFromTemp = temporarySession.messages || [];
         setCurrentChatMessages(messagesFromTemp);
       } else {
-        // For persisted sessions, load from storage
-        console.log(
-          "Loading persisted session messages for:",
-          activeChatSessionId
-        );
         loadChatSessionMessages(activeChatSessionId);
       }
     } else {
-      console.log("No active session, clearing messages");
       clearCurrentChatMessages();
     }
   }, [activeChatSessionId, temporarySession]);
 
   useEffect(() => {
-    console.log("ChatPage: currentChatMessages updated:", {
-      messageCount: currentChatMessages?.length || 0,
-      messages: currentChatMessages,
-      activeChatSessionId,
-      temporarySessionId: temporarySession?.id,
-      stackTrace: new Error().stack?.split("\n").slice(1, 3),
-    });
+    // ...removed debug log...
     scrollToBottom();
   }, [currentChatMessages]);
 
@@ -146,17 +117,9 @@ const ChatPage = () => {
   const loadChatSessionMessages = async (sessionId) => {
     try {
       const messages = await invoke("get_session_messages", { sessionId });
-      console.log(
-        "Loaded messages:",
-        messages,
-        "Type:",
-        typeof messages,
-        "IsArray:",
-        Array.isArray(messages)
-      );
       setCurrentChatMessages(Array.isArray(messages) ? messages : []);
     } catch (error) {
-      console.error("Failed to load chat session messages:", error);
+      console.error("ChatPage: Failed to load chat session messages:", error);
       showNotification("Failed to load chat messages", "error");
       setCurrentChatMessages([]);
     }
@@ -229,7 +192,6 @@ const ChatPage = () => {
         }
 
         const { token, finished } = event.payload;
-        console.log("Received chat token:", { token, finished });
 
         if (finished) {
           // Clear the timeout since we received proper completion
@@ -244,6 +206,12 @@ const ChatPage = () => {
           const streamingDuration =
             (Date.now() - globalStreamingStartTime) / 1000;
           const tokensPerSecond = globalTokenCounter / streamingDuration;
+
+          console.log(
+            `Streaming completed: ${globalTokenCounter} tokens in ${streamingDuration.toFixed(
+              2
+            )}s (${tokensPerSecond.toFixed(1)} tokens/sec)`
+          );
 
           // Add a small delay to ensure any pending token updates complete first
           setTimeout(async () => {
@@ -274,11 +242,6 @@ const ChatPage = () => {
                   tokens_per_second: tokensPerSecond,
                   is_error: null,
                 });
-
-                console.log(
-                  "Saved assistant message with tokens per second:",
-                  tokensPerSecond
-                );
 
                 // Update the local message with the saved message ID
                 const currentMessages =
@@ -325,6 +288,7 @@ const ChatPage = () => {
           // Set start time on first token
           if (globalTokenCounter === 1) {
             globalStreamingStartTime = Date.now();
+            console.log("Starting new streaming response");
           }
 
           // Clear existing timeout
@@ -344,28 +308,15 @@ const ChatPage = () => {
             };
             globalCurrentStreamingMessageId = newMessage.id;
 
-            console.log("Starting new streaming message:", newMessage);
             globalSetMessages((prev) => {
-              console.log(
-                "Adding new message to chat, previous messages:",
-                prev
-              );
               return [...prev, newMessage];
             });
           } else {
             // Append to existing streaming message
-            console.log("Appending token to existing message:", token);
             globalSetMessages((prev) => {
               const newMessages = [...prev];
               const messageIndex = newMessages.findIndex(
                 (m) => m.id === globalCurrentStreamingMessageId
-              );
-
-              console.log(
-                "Found message at index:",
-                messageIndex,
-                "Total messages:",
-                newMessages.length
               );
 
               if (messageIndex !== -1) {
@@ -375,7 +326,6 @@ const ChatPage = () => {
                   content: existingMessage.content + token,
                 };
                 newMessages[messageIndex] = updatedMessage;
-                console.log("Updated message content:", updatedMessage.content);
               }
 
               return newMessages;
@@ -529,8 +479,6 @@ const ChatPage = () => {
       globalStreamingStartTime = null;
 
       // Use streaming chat function
-      console.log("Sending message to model:", messageContent);
-
       await invoke("chat_with_loaded_model_streaming", {
         message: messageContent,
         sessionId: sessionToUse,
@@ -542,7 +490,6 @@ const ChatPage = () => {
         maxTokens: settings.maxTokens,
         maxCompletionTokens: settings.maxCompletionTokens,
       });
-      console.log("Message sent, waiting for streaming response...");
 
       // The response will be handled by the streaming event listener
     } catch (error) {

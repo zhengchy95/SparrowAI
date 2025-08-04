@@ -346,7 +346,7 @@ pub async fn download_entire_model(
     let total_size_gb = (total_estimated_size as f64) / (1024.0 * 1024.0 * 1024.0);
 
     if total_size_gb > 10.0 {
-        println!(
+        eprintln!(
             "Warning: Large model detected ({:.1} GB). This may take a while and use significant disk space.",
             total_size_gb
         );
@@ -415,6 +415,8 @@ pub async fn download_entire_model(
     // Generate graph.pbtxt for OVMS compatibility
     if let Err(e) = crate::generate_ovms_graph(&target_dir, &normalized_model_id) {
         eprintln!("Warning: Failed to generate graph.pbtxt: {}", e);
+    } else {
+        println!("graph.pbtxt generated for model: {}", normalized_model_id);
     }
 
     if !errors.is_empty() {

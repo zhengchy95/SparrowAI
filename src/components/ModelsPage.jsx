@@ -58,7 +58,7 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
       removeDownloadedModel(modelId);
       showNotification(result, "success");
     } catch (error) {
-      console.error("Delete failed:", error);
+      console.error("ModelsPage: Delete failed:", error);
       showNotification(`Failed to delete model: ${error}`, "error");
     }
   };
@@ -77,7 +77,7 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
 
       showNotification(result, "success");
     } catch (error) {
-      console.error("Failed to open folder:", error);
+      console.error("ModelsPage: Failed to open folder:", error);
       showNotification(`Failed to open folder: ${error}`, "error");
     }
   };
@@ -187,7 +187,7 @@ const ModelsPage = () => {
       const result = await invoke("get_loaded_model");
       setLoadedModelId(result);
     } catch (error) {
-      console.error("Failed to get loaded model:", error);
+      console.error("ModelsPage: Failed to get loaded model:", error);
       setLoadedModelId(null);
     }
   };
