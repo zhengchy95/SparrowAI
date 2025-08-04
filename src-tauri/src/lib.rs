@@ -2,120 +2,7 @@ use std::path::PathBuf;
 
 mod huggingface;
 mod ovms;
-mod tests;
-mod chat_sessions;
-
-fn generate_ovms_graph(model_dir: &PathBuf, model_id: &str) -> Result<(), String> {
-    // Extract model name from ID (e.g., "OpenVINO/Phi-3.5-mini-instruct-int4-ov" -> "Phi-3.5-mini-instruct-int4-ov")
-    let model_name = model_id.split('/').last().unwrap_or(model_id);
-
-    // Check if we have OpenVINO IR files (.xml and .bin)
-    let xml_files: Vec<_> = std::fs
-        ::read_dir(model_dir)
-        .map_err(|e| format!("Failed to read model directory: {}", e))?
-        .filter_map(|entry| {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("xml") {
-                    Some(path.file_stem().unwrap().to_string_lossy().to_string())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if xml_files.is_empty() {
-        return Err("No OpenVINO IR files (.xml) found in model directory".to_string());
-    }
-
-    // For LLM models, look for common patterns
-    let main_model_name = xml_files
-        .iter()
-        .find(|name| (name.contains("model") || name.contains("openvino")))
-        .or_else(|| xml_files.first())
-        .ok_or("No suitable model file found")?;
-
-    // Check for tokenizer and detokenizer
-    let tokenizer_name = xml_files
-        .iter()
-        .find(|name| name.contains("tokenizer") && !name.contains("detokenizer"));
-    let detokenizer_name = xml_files.iter().find(|name| name.contains("detokenizer"));
-
-    // Generate graph.pbtxt content based on model type
-    let graph_content = if tokenizer_name.is_some() && detokenizer_name.is_some() {
-        // Full LLM pipeline with tokenizer/detokenizer
-        format!(
-            r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
-output_stream: "HTTP_RESPONSE_PAYLOAD:output"
-
-node: {{
-  name: "LLMExecutor"
-  calculator: "HttpLLMCalculator"
-  input_stream: "LOOPBACK:loopback"
-  input_stream: "HTTP_REQUEST_PAYLOAD:input"
-  input_side_packet: "LLM_NODE_RESOURCES:llm"
-  output_stream: "LOOPBACK:loopback"
-  output_stream: "HTTP_RESPONSE_PAYLOAD:output"
-  input_stream_info: {{
-    tag_index: 'LOOPBACK:0',
-    back_edge: true
-  }}
-  node_options: {{
-      [type.googleapis.com / mediapipe.LLMCalculatorOptions]: {{
-          models_path: "./",
-          plugin_config: '{{}}',
-          enable_prefix_caching: false,
-          cache_size: 2,
-          max_num_seqs: 256,
-          device: "GPU",
-      }}
-  }}
-  input_stream_handler {{
-    input_stream_handler: "SyncSetInputStreamHandler",
-    options {{
-      [mediapipe.SyncSetInputStreamHandlerOptions.ext] {{
-        sync_set {{
-          tag_index: "LOOPBACK:0"
-        }}
-      }}
-    }}
-  }}
-}}
-"#
-        )
-    } else {
-        // Simple model inference graph
-        format!(r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
-output_stream: "HTTP_RESPONSE_PAYLOAD:output"
-
-node {{
-  name: "ModelInference"
-  calculator: "OpenVINOInferenceCalculator"
-  input_stream: "HTTP_REQUEST_PAYLOAD:input"
-  output_stream: "HTTP_RESPONSE_PAYLOAD:output"
-  node_options: {{
-    [type.googleapis.com/mediapipe.OpenVINOInferenceCalculatorOptions]: {{
-      model_path: "./{}.xml"
-      device: "CPU"
-    }}
-  }}
-}}
-"#, main_model_name)
-    };
-
-    let graph_path = model_dir.join("graph.pbtxt");
-    std::fs
-        ::write(&graph_path, graph_content)
-        .map_err(|e| format!("Failed to write graph.pbtxt: {}", e))?;
-
-    // Only print if model graph generation is successful
-    println!("graph.pbtxt generated for model: {} at {}", model_name, graph_path.display());
-
-    Ok(())
-}
+mod chat;
 
 #[tauri::command]
 async fn check_downloaded_models(download_path: Option<String>) -> Result<Vec<String>, String> {
@@ -301,18 +188,8 @@ async fn open_model_folder(
             .arg(&windows_path)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))
-    } else if cfg!(target_os = "macos") {
-        std::process::Command
-            ::new("open")
-            .arg(&model_dir)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))
     } else {
-        std::process::Command
-            ::new("xdg-open")
-            .arg(&model_dir)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))
+        Err("Unsupported operating system".to_string())
     };
 
     match result {
@@ -375,25 +252,20 @@ pub fn run() {
                 ovms::load_model,
                 ovms::unload_model,
                 ovms::get_loaded_model,
-                ovms::chat_with_loaded_model_streaming,
+                chat::chat_with_loaded_model_streaming,
                 ovms::check_ovms_status,
                 ovms::get_ovms_model_metadata,
-                tests::test_openvino_search,
-                tests::test_model_loading,
-                tests::test_model_workflow,
-                tests::show_model_commands,
-                tests::test_download_paths,
-                chat_sessions::get_chat_sessions,
-                chat_sessions::create_chat_session,
-                chat_sessions::create_temporary_chat_session,
-                chat_sessions::persist_temporary_session,
-                chat_sessions::add_message_to_temporary_session,
-                chat_sessions::update_chat_session,
-                chat_sessions::delete_chat_session,
-                chat_sessions::set_active_chat_session,
-                chat_sessions::add_message_to_session,
-                chat_sessions::get_session_messages,
-                chat_sessions::get_conversation_history
+                chat::get_chat_sessions,
+                chat::create_chat_session,
+                chat::create_temporary_chat_session,
+                chat::persist_temporary_session,
+                chat::add_message_to_temporary_session,
+                chat::update_chat_session,
+                chat::delete_chat_session,
+                chat::set_active_chat_session,
+                chat::add_message_to_session,
+                chat::get_session_messages,
+                chat::get_conversation_history
             ]
         )
         .on_window_event(|_window, event| {
