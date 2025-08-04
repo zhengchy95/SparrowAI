@@ -215,7 +215,7 @@ const SettingsDialog = () => {
           </Typography>
 
           <Grid container spacing={3}>
-            <Grid size={12}>
+            <Grid size={6}>
               <Typography variant="body2" gutterBottom>
                 Temperature: {settings.temperature ?? 0.7}
               </Typography>
@@ -238,7 +238,7 @@ const SettingsDialog = () => {
               </Typography>
             </Grid>
 
-            <Grid size={12}>
+            <Grid size={6}>
               <Typography variant="body2" gutterBottom>
                 Top P: {settings.topP ?? 1.0}
               </Typography>
