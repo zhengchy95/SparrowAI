@@ -38,8 +38,6 @@ struct HfModelInfo {
     pub created_at: Option<String>,
     #[serde(rename = "lastModified")]
     pub last_modified: Option<String>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,10 +115,10 @@ async fn download_single_file(
             // Calculate overall progress based on total downloaded bytes across all files
             let total_downloaded_bytes = total_downloaded_so_far + downloaded;
             let overall_progress = if total_estimated_size > 0 {
-                ((total_downloaded_bytes as f64 / total_estimated_size as f64) * 100.0) as u32
+                (((total_downloaded_bytes as f64) / (total_estimated_size as f64)) * 100.0) as u32
             } else {
                 // Fallback to file-based progress if no size info
-                ((file_index as f64 / total_files as f64) * 100.0) as u32
+                (((file_index as f64) / (total_files as f64)) * 100.0) as u32
             };
 
             let _ = app.emit(

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -13,45 +13,40 @@ import {
   CircularProgress,
   Fade,
   Zoom,
-  Button
-} from '@mui/material';
+  Button,
+} from "@mui/material";
 import {
   Download as DownloadIcon,
   UnarchiveOutlined as ExtractIcon,
   CheckCircle as CheckIcon,
   Settings as SetupIcon,
-  Refresh as RefreshIcon
-} from '@mui/icons-material';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+  Refresh as RefreshIcon,
+} from "@mui/icons-material";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 const InitialSetup = ({ onSetupComplete }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState(null);
-  const [statusMessage, setStatusMessage] = useState('Initializing...');
+  const [statusMessage, setStatusMessage] = useState("Initializing...");
   const [isRetrying, setIsRetrying] = useState(false);
 
   const steps = [
     {
-      label: 'Checking OVMS Installation',
-      description: 'Verifying if OpenVINO Model Server is already installed',
-      icon: <SetupIcon />,
-    },
-    {
-      label: 'Downloading OVMS',
-      description: 'Downloading OpenVINO Model Server from GitHub releases',
+      label: "Downloading OVMS",
+      description: "Downloading OpenVINO Model Server from GitHub releases",
       icon: <DownloadIcon />,
     },
     {
-      label: 'Extracting Files',
-      description: 'Extracting and setting up OVMS executable',
+      label: "Extracting Files",
+      description: "Extracting and setting up OVMS executable",
       icon: <ExtractIcon />,
     },
     {
-      label: 'Starting Server',
-      description: 'Initializing OVMS server for the first time',
+      label: "Starting Server",
+      description: "Initializing OVMS server for the first time",
       icon: <CheckIcon />,
     },
   ];
@@ -62,64 +57,50 @@ const InitialSetup = ({ onSetupComplete }) => {
 
   const startSetupProcess = async () => {
     try {
-      // Step 1: Check if OVMS is already present
+      // Step 1: Download OVMS
       setCurrentStep(0);
-      setStatusMessage('Checking for existing OVMS installation...');
-      setProgress(5);
-
-      const isPresent = await invoke('check_ovms_present');
-      if (isPresent) {
-        // OVMS already present, skip to completion
-        setCurrentStep(3);
-        setProgress(100);
-        setStatusMessage('OVMS already installed! Welcome to SparrowAI');
-        setIsComplete(true);
-        setTimeout(() => {
-          onSetupComplete();
-        }, 1500);
-        return;
-      }
-
-      setProgress(10);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Step 2: Download OVMS
-      setCurrentStep(1);
-      setStatusMessage('Downloading OVMS (this may take a few minutes)...');
+      setStatusMessage("Downloading OVMS (this may take a few minutes)...");
       setProgress(15);
 
-      const downloadResult = await invoke('download_ovms');
-      console.log('Download result:', downloadResult);
+      const downloadResult = await invoke("download_ovms");
+      console.log("Download result:", downloadResult);
 
-      // Step 3: Extraction completed
-      setCurrentStep(2);
-      setStatusMessage('OVMS downloaded and extracted successfully');
+      // Step 2: Extraction completed
+      setCurrentStep(1);
+      setStatusMessage("OVMS downloaded and extracted successfully");
       setProgress(80);
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Step 4: Server startup (happens automatically)
-      setCurrentStep(3);
-      setStatusMessage('Initializing OVMS server...');
+      // Step 3: Server startup
+      setCurrentStep(2);
+      setStatusMessage("Starting OVMS server for the first time...");
       setProgress(95);
 
-      // Give the server a moment to start
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Start the OVMS server after download
+      try {
+        await invoke("start_ovms_server"); // Use the new command
+        console.log("OVMS server started successfully");
+      } catch (serverErr) {
+        console.warn("OVMS server startup warning:", serverErr);
+        // Don't fail the setup if server startup has issues
+      }
 
       // Complete
       setProgress(100);
-      setStatusMessage('Setup complete! Welcome to SparrowAI');
+      setStatusMessage("Setup complete! Welcome to SparrowAI");
       setIsComplete(true);
 
       // Wait a moment before calling onSetupComplete
       setTimeout(() => {
         onSetupComplete();
       }, 2000);
-
     } catch (err) {
-      console.error('Setup failed:', err);
+      console.error("Setup failed:", err);
       setError(err.toString());
-      setStatusMessage('Setup failed. Please check your internet connection and try again.');
+      setStatusMessage(
+        "Setup failed. Please check your internet connection and try again."
+      );
     } finally {
       setIsRetrying(false);
     }
@@ -131,7 +112,7 @@ const InitialSetup = ({ onSetupComplete }) => {
     setCurrentStep(0);
     setProgress(0);
     setIsComplete(false);
-    setStatusMessage('Retrying setup...');
+    setStatusMessage("Retrying setup...");
     startSetupProcess();
   };
 
@@ -152,12 +133,12 @@ const InitialSetup = ({ onSetupComplete }) => {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        p: 3
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        p: 3,
       }}
     >
       <Fade in timeout={800}>
@@ -165,11 +146,11 @@ const InitialSetup = ({ onSetupComplete }) => {
           elevation={24}
           sx={{
             maxWidth: 600,
-            width: '100%',
+            width: "100%",
             p: 4,
             borderRadius: 3,
-            background: 'rgba(255, 255, 255, 0.95)',
-            backdropFilter: 'blur(10px)'
+            background: "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(10px)",
           }}
         >
           {/* Header */}
@@ -179,11 +160,11 @@ const InitialSetup = ({ onSetupComplete }) => {
               component="h1"
               gutterBottom
               sx={{
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, #667eea, #764ba2)',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
+                fontWeight: "bold",
+                background: "linear-gradient(45deg, #667eea, #764ba2)",
+                backgroundClip: "text",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
               }}
             >
               SparrowAI
@@ -203,8 +184,8 @@ const InitialSetup = ({ onSetupComplete }) => {
 
           {/* Error Display */}
           {error && (
-            <Alert 
-              severity="error" 
+            <Alert
+              severity="error"
               sx={{ mb: 3 }}
               action={
                 <Button
@@ -212,9 +193,15 @@ const InitialSetup = ({ onSetupComplete }) => {
                   size="small"
                   onClick={handleRetry}
                   disabled={isRetrying}
-                  startIcon={isRetrying ? <CircularProgress size={16} /> : <RefreshIcon />}
+                  startIcon={
+                    isRetrying ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <RefreshIcon />
+                    )
+                  }
                 >
-                  {isRetrying ? 'Retrying...' : 'Retry'}
+                  {isRetrying ? "Retrying..." : "Retry"}
                 </Button>
               }
             >
@@ -224,7 +211,12 @@ const InitialSetup = ({ onSetupComplete }) => {
 
           {/* Progress Bar */}
           <Box mb={3}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={1}
+            >
               <Typography variant="body2" color="text.secondary">
                 Progress
               </Typography>
@@ -238,11 +230,11 @@ const InitialSetup = ({ onSetupComplete }) => {
               sx={{
                 height: 8,
                 borderRadius: 4,
-                backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                '& .MuiLinearProgress-bar': {
+                backgroundColor: "rgba(0, 0, 0, 0.1)",
+                "& .MuiLinearProgress-bar": {
                   borderRadius: 4,
-                  background: 'linear-gradient(45deg, #667eea, #764ba2)'
-                }
+                  background: "linear-gradient(45deg, #667eea, #764ba2)",
+                },
               }}
             />
           </Box>
@@ -261,16 +253,16 @@ const InitialSetup = ({ onSetupComplete }) => {
                 <StepLabel
                   icon={getStepIcon(index)}
                   sx={{
-                    '& .MuiStepLabel-iconContainer': {
-                      color: index <= currentStep ? 'primary.main' : 'text.disabled'
-                    }
+                    "& .MuiStepLabel-iconContainer": {
+                      color: "text.secondary",
+                    },
                   }}
                 >
                   <Typography
                     variant="subtitle1"
                     sx={{
-                      fontWeight: index <= currentStep ? 'bold' : 'normal',
-                      color: index <= currentStep ? 'text.primary' : 'text.secondary'
+                      fontWeight: index <= currentStep ? "bold" : "normal",
+                      color: "text.secondary",
                     }}
                   >
                     {step.label}
