@@ -24,8 +24,10 @@ import {
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import useAppStore from "../store/useAppStore";
 
 const InitialSetup = ({ onSetupComplete }) => {
+  const { setIsOvmsRunning } = useAppStore();
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
@@ -81,8 +83,10 @@ const InitialSetup = ({ onSetupComplete }) => {
       try {
         await invoke("start_ovms_server"); // Use the new command
         console.log("OVMS server started successfully");
+        setIsOvmsRunning(true); // Update the OVMS running state
       } catch (serverErr) {
         console.warn("OVMS server startup warning:", serverErr);
+        setIsOvmsRunning(false); // Ensure state is set to false on error
         // Don't fail the setup if server startup has issues
       }
 
@@ -101,6 +105,7 @@ const InitialSetup = ({ onSetupComplete }) => {
       setStatusMessage(
         "Setup failed. Please check your internet connection and try again."
       );
+      setIsOvmsRunning(false); // Ensure OVMS state is set to false on setup failure
     } finally {
       setIsRetrying(false);
     }

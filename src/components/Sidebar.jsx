@@ -49,6 +49,9 @@ const Sidebar = ({
     addChatSession,
     updateChatSession,
     removeChatSession,
+    temporarySession,
+    setTemporarySession,
+    clearTemporarySession,
   } = useChatStore();
 
   const [loadingChatSessions, setLoadingChatSessions] = useState(false);
@@ -77,13 +80,36 @@ const Sidebar = ({
   const loadChatSessions = async () => {
     try {
       setLoadingChatSessions(true);
+      console.log("Sidebar: Loading chat sessions. Current state:", {
+        temporarySession: temporarySession?.id,
+        activeChatSessionId,
+      });
+
       const result = await invoke("get_chat_sessions");
       setChatSessions(result.sessions || {});
-      setActiveChatSessionId(result.active_session_id);
 
-      // If no active session exists, create a new chat automatically
-      if (!result.active_session_id) {
-        await createNewChat();
+      console.log("Sidebar: Loaded sessions from storage:", {
+        sessionCount: Object.keys(result.sessions || {}).length,
+        activeSessionFromStorage: result.active_session_id,
+      });
+
+      // Don't override active session if we already have a temporary session
+      // This ensures the new temporary session created on startup is preserved
+      if (!temporarySession && !activeChatSessionId) {
+        console.log("Sidebar: No temporary session, setting from storage");
+        setActiveChatSessionId(result.active_session_id);
+
+        // If no active session exists, create a new chat automatically
+        if (!result.active_session_id) {
+          console.log(
+            "Sidebar: No active session in storage, creating new chat"
+          );
+          await createNewChat();
+        }
+      } else {
+        console.log(
+          "Sidebar: Preserving existing temporary session or active session"
+        );
       }
     } catch (error) {
       console.error("Failed to load chat sessions:", error);
@@ -95,14 +121,16 @@ const Sidebar = ({
 
   const createNewChat = async () => {
     try {
-      const newSession = await invoke("create_chat_session", {
+      const newSession = await invoke("create_temporary_chat_session", {
         title: "New Chat",
       });
-      addChatSession(newSession);
-      setActiveChatSessionId(newSession.id);
 
-      // Update the chat session in store to trigger sidebar update
-      updateChatSession(newSession.id, { title: newSession.title });
+      // Clear any existing temporary session
+      clearTemporarySession();
+
+      // Set this as the temporary session (not saved to storage yet)
+      setTemporarySession(newSession);
+      setActiveChatSessionId(newSession.id);
 
       onPageChange("chat");
       showNotification("New chat created", "success");
@@ -116,6 +144,12 @@ const Sidebar = ({
     try {
       await invoke("set_active_chat_session", { sessionId });
       setActiveChatSessionId(sessionId);
+
+      // Clear temporary session when selecting a persisted one
+      if (temporarySession && temporarySession.id !== sessionId) {
+        clearTemporarySession();
+      }
+
       onPageChange("chat");
     } catch (error) {
       console.error("Failed to select chat session:", error);
@@ -346,8 +380,60 @@ const Sidebar = ({
       )}
 
       <List sx={{ px: 1, py: 0, flexGrow: 1, overflow: "auto" }}>
+        {/* Show temporary session first if it exists */}
+        {temporarySession && (
+          <ListItem key={temporarySession.id} disablePadding sx={{ mb: 0.5 }}>
+            <Tooltip
+              title={isCollapsed ? temporarySession.title : ""}
+              placement="right"
+              arrow
+            >
+              <ListItemButton
+                selected={activeChatSessionId === temporarySession.id}
+                onClick={() => setActiveChatSessionId(temporarySession.id)}
+                sx={{
+                  borderRadius: 2,
+                  justifyContent: isCollapsed ? "center" : "initial",
+                  px: isCollapsed ? 2 : 2,
+                  py: 1,
+                  "&.Mui-selected": {
+                    backgroundColor: theme.palette.action.selected,
+                  },
+                  "&:hover": {
+                    backgroundColor: theme.palette.action.hover,
+                  },
+                }}
+              >
+                <ListItemIcon
+                  sx={{
+                    minWidth: 32,
+                    justifyContent: "center",
+                  }}
+                >
+                  <ChatIcon sx={{ fontSize: 18, opacity: 0.7 }} />
+                </ListItemIcon>
+                {!isCollapsed && (
+                  <ListItemText
+                    primary={temporarySession.title}
+                    primaryTypographyProps={{
+                      fontSize: "0.875rem",
+                      fontWeight:
+                        activeChatSessionId === temporarySession.id ? 500 : 400,
+                      noWrap: true,
+                      fontStyle: "italic",
+                      opacity: 0.8,
+                    }}
+                  />
+                )}
+              </ListItemButton>
+            </Tooltip>
+          </ListItem>
+        )}
+
+        {/* Show persisted sessions */}
         {Object.values(chatSessions)
           .filter((session) => session.messages && session.messages.length > 0)
+          .sort((a, b) => b.updated_at - a.updated_at) // Sort by updated_at descending (newest first)
           .map((session) => (
             <ListItem key={session.id} disablePadding sx={{ mb: 0.5 }}>
               <Tooltip

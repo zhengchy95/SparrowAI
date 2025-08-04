@@ -57,6 +57,10 @@ const ChatPage = () => {
     addMessageToCurrentChat,
     clearCurrentChatMessages,
     updateChatSession,
+    temporarySession,
+    setTemporarySession,
+    clearTemporarySession,
+    addChatSession,
   } = useChatStore();
   const [inputMessage, setInputMessage] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
@@ -87,15 +91,51 @@ const ChatPage = () => {
 
   // Load messages when active chat session changes
   useEffect(() => {
+    console.log("ChatPage: Loading messages for session", {
+      activeChatSessionId,
+      temporarySession: temporarySession
+        ? {
+            id: temporarySession.id,
+            messageCount: temporarySession.messages?.length || 0,
+          }
+        : null,
+    });
+
     if (activeChatSessionId) {
-      loadChatSessionMessages(activeChatSessionId);
+      // Check if this is a temporary session
+      if (temporarySession && temporarySession.id === activeChatSessionId) {
+        // For temporary sessions, just use the messages from the temporary session
+        console.log(
+          "Using temporary session messages:",
+          temporarySession.messages?.length || 0,
+          "Messages:",
+          temporarySession.messages
+        );
+        // Force clear and set messages for temporary session
+        const messagesFromTemp = temporarySession.messages || [];
+        setCurrentChatMessages(messagesFromTemp);
+      } else {
+        // For persisted sessions, load from storage
+        console.log(
+          "Loading persisted session messages for:",
+          activeChatSessionId
+        );
+        loadChatSessionMessages(activeChatSessionId);
+      }
     } else {
+      console.log("No active session, clearing messages");
       clearCurrentChatMessages();
     }
-  }, [activeChatSessionId]);
+  }, [activeChatSessionId, temporarySession]);
 
   useEffect(() => {
-    console.log("currentChatMessages updated:", currentChatMessages);
+    console.log("ChatPage: currentChatMessages updated:", {
+      messageCount: currentChatMessages?.length || 0,
+      messages: currentChatMessages,
+      activeChatSessionId,
+      temporarySessionId: temporarySession?.id,
+      stackTrace: new Error().stack?.split("\n").slice(1, 3),
+    });
     scrollToBottom();
   }, [currentChatMessages]);
 
@@ -425,24 +465,61 @@ const ChatPage = () => {
     setIsSending(true);
 
     try {
-      // Add user message to chat session
-      const userMessage = await invoke("add_message_to_session", {
-        sessionId: activeChatSessionId,
-        role: "user",
-        content: messageContent,
-        tokens_per_second: null,
-        is_error: null,
-      });
+      let sessionToUse = activeChatSessionId;
+      let userMessage;
 
-      addMessageToCurrentChat(userMessage);
-      console.log("Added user message to current chat");
+      // Check if this is a temporary session
+      if (temporarySession && temporarySession.id === activeChatSessionId) {
+        console.log("Adding message to temporary session");
 
-      // Update session title if it was auto-generated and refresh chat sessions
-      const sessionData = await invoke("get_chat_sessions");
-      const currentSession = sessionData.sessions[activeChatSessionId];
-      if (currentSession) {
-        // Update the session in the store with the latest data including messages
-        updateChatSession(activeChatSessionId, currentSession);
+        // Add user message to temporary session (not persisted yet)
+        const result = await invoke("add_message_to_temporary_session", {
+          session: temporarySession,
+          role: "user",
+          content: messageContent,
+          tokens_per_second: null,
+          is_error: null,
+        });
+
+        const [updatedSession, message] = result;
+        userMessage = message;
+
+        // Update the temporary session in the store
+        setTemporarySession(updatedSession);
+        addMessageToCurrentChat(userMessage);
+
+        // Now persist the session since user sent first message
+        console.log("Persisting temporary session");
+        const persistedSession = await invoke("persist_temporary_session", {
+          session: updatedSession,
+        });
+
+        // Move from temporary to persisted sessions
+        addChatSession(persistedSession);
+        clearTemporarySession();
+
+        sessionToUse = persistedSession.id;
+        console.log("Session persisted with ID:", sessionToUse);
+      } else {
+        // Add user message to existing persisted session
+        userMessage = await invoke("add_message_to_session", {
+          sessionId: activeChatSessionId,
+          role: "user",
+          content: messageContent,
+          tokens_per_second: null,
+          is_error: null,
+        });
+
+        addMessageToCurrentChat(userMessage);
+        console.log("Added user message to existing session");
+
+        // Update session title if it was auto-generated and refresh chat sessions
+        const sessionData = await invoke("get_chat_sessions");
+        const currentSession = sessionData.sessions[activeChatSessionId];
+        if (currentSession) {
+          // Update the session in the store with the latest data including messages
+          updateChatSession(activeChatSessionId, currentSession);
+        }
       }
 
       // Reset global streaming state for new response
@@ -456,7 +533,7 @@ const ChatPage = () => {
 
       await invoke("chat_with_loaded_model_streaming", {
         message: messageContent,
-        sessionId: activeChatSessionId,
+        sessionId: sessionToUse,
         includeHistory: settings.includeConversationHistory || false,
         systemPrompt: settings.systemPrompt,
         temperature: settings.temperature,
@@ -474,14 +551,28 @@ const ChatPage = () => {
 
       // Add error message to session
       try {
-        const errorMessage = await invoke("add_message_to_session", {
-          sessionId: activeChatSessionId,
-          role: "assistant",
-          content: `Error: ${error}`,
-          tokens_per_second: null,
-          is_error: true,
-        });
-        addMessageToCurrentChat(errorMessage);
+        if (temporarySession && temporarySession.id === activeChatSessionId) {
+          // For temporary sessions, we can't save error messages to storage
+          // Just add to current chat display
+          const errorMessage = {
+            id: Date.now() + Math.random(),
+            role: "assistant",
+            content: `Error: ${error}`,
+            timestamp: Date.now(),
+            is_error: true,
+          };
+          addMessageToCurrentChat(errorMessage);
+        } else {
+          // For persisted sessions, save to storage
+          const errorMessage = await invoke("add_message_to_session", {
+            sessionId: activeChatSessionId,
+            role: "assistant",
+            content: `Error: ${error}`,
+            tokens_per_second: null,
+            is_error: true,
+          });
+          addMessageToCurrentChat(errorMessage);
+        }
       } catch (saveError) {
         console.error("Failed to save error message:", saveError);
       }
