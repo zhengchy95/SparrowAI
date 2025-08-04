@@ -1,17 +1,59 @@
 import { createTheme } from "@mui/material/styles";
 
-// Create theme function that takes mode as parameter
-export const createAppTheme = (mode) =>
-  createTheme({
+// Define color palettes
+const colorPalettes = {
+  orange: {
+    main: "#ff8c00",
+    light: "#ffb347",
+    dark: "#e67e00",
+  },
+  blue: {
+    main: "#2196f3",
+    light: "#64b5f6",
+    dark: "#1976d2",
+  },
+  purple: {
+    main: "#9c27b0",
+    light: "#ba68c8",
+    dark: "#7b1fa2",
+  },
+  green: {
+    main: "#4caf50",
+    light: "#81c784",
+    dark: "#388e3c",
+  },
+  red: {
+    main: "#f44336",
+    light: "#ef5350",
+    dark: "#d32f2f",
+  },
+  teal: {
+    main: "#009688",
+    light: "#4db6ac",
+    dark: "#00695c",
+  },
+  indigo: {
+    main: "#3f51b5",
+    light: "#7986cb",
+    dark: "#303f9f",
+  },
+  pink: {
+    main: "#e91e63",
+    light: "#f06292",
+    dark: "#c2185b",
+  },
+};
+
+// Create theme function that takes mode and color as parameters
+export const createAppTheme = (mode, color = "orange") => {
+  const primaryColor = colorPalettes[color] || colorPalettes.orange;
+
+  return createTheme({
     palette: {
       mode: mode,
-      primary: {
-        main: "#ff8c00",
-        light: "#ffb347",
-        dark: "#e67e00",
-      },
+      primary: primaryColor,
       secondary: {
-        main: "#ffb347",
+        main: primaryColor.light,
       },
       background: {
         default: mode === "dark" ? "#1a1a1a" : "#ffffff",
@@ -80,7 +122,7 @@ export const createAppTheme = (mode) =>
                 borderColor: mode === "dark" ? "#606060" : "#b0b0b0",
               },
               "&.Mui-focused fieldset": {
-                borderColor: "#ff8c00",
+                borderColor: primaryColor.main,
               },
             },
             "& .MuiInputLabel-root": {
@@ -94,3 +136,7 @@ export const createAppTheme = (mode) =>
       },
     },
   });
+};
+
+// Export available theme colors for settings
+export const getAvailableThemeColors = () => Object.keys(colorPalettes);

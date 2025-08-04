@@ -24,10 +24,12 @@ import {
   Menu as MenuIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
+  Memory as MemoryIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
 import useAppStore from "../store/useAppStore";
 import useChatStore from "../store/useChatStore";
+import OvmsStatusDialog from "./OvmsStatusDialog";
 
 const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 64;
@@ -55,6 +57,7 @@ const Sidebar = ({
   } = useChatStore();
 
   const [loadingChatSessions, setLoadingChatSessions] = useState(false);
+  const [ovmsStatusDialogOpen, setOvmsStatusDialogOpen] = useState(false);
 
   const drawerWidth = isCollapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
 
@@ -148,6 +151,10 @@ const Sidebar = ({
 
   const handleSettingsClick = () => {
     setSettingsDialogOpen(true);
+  };
+
+  const handleOvmsStatusClick = () => {
+    setOvmsStatusDialogOpen(true);
   };
 
   return (
@@ -448,6 +455,38 @@ const Sidebar = ({
       <List sx={{ px: 1, py: 2 }}>
         <ListItem disablePadding>
           <Tooltip
+            title={isCollapsed ? "OVMS Status" : ""}
+            placement="right"
+            arrow
+          >
+            <ListItemButton
+              onClick={handleOvmsStatusClick}
+              sx={{
+                borderRadius: 2,
+                justifyContent: isCollapsed ? "center" : "initial",
+                px: isCollapsed ? 2 : 2,
+                "&:hover": {
+                  backgroundColor: theme.palette.action.hover,
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, justifyContent: "center" }}>
+                <MemoryIcon />
+              </ListItemIcon>
+              {!isCollapsed && (
+                <ListItemText
+                  primary="OVMS Status"
+                  primaryTypographyProps={{
+                    fontSize: "0.95rem",
+                  }}
+                />
+              )}
+            </ListItemButton>
+          </Tooltip>
+        </ListItem>
+
+        <ListItem disablePadding sx={{ mt: 1 }}>
+          <Tooltip
             title={isCollapsed ? "Settings" : ""}
             placement="right"
             arrow
@@ -477,34 +516,13 @@ const Sidebar = ({
             </ListItemButton>
           </Tooltip>
         </ListItem>
-
-        <ListItem disablePadding sx={{ mt: 1 }}>
-          <Tooltip title={isCollapsed ? "About" : ""} placement="right" arrow>
-            <ListItemButton
-              sx={{
-                borderRadius: 2,
-                justifyContent: isCollapsed ? "center" : "initial",
-                px: isCollapsed ? 2 : 2,
-                "&:hover": {
-                  backgroundColor: theme.palette.action.hover,
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40, justifyContent: "center" }}>
-                <InfoIcon />
-              </ListItemIcon>
-              {!isCollapsed && (
-                <ListItemText
-                  primary="About"
-                  primaryTypographyProps={{
-                    fontSize: "0.95rem",
-                  }}
-                />
-              )}
-            </ListItemButton>
-          </Tooltip>
-        </ListItem>
       </List>
+
+      {/* OVMS Status Dialog */}
+      <OvmsStatusDialog
+        open={ovmsStatusDialogOpen}
+        onClose={() => setOvmsStatusDialogOpen(false)}
+      />
     </Drawer>
   );
 };
