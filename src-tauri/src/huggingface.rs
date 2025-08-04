@@ -413,7 +413,7 @@ pub async fn download_entire_model(
     );
 
     // Generate graph.pbtxt for OVMS compatibility
-    if let Err(e) = crate::generate_ovms_graph(&target_dir, &normalized_model_id) {
+    if let Err(e) = crate::ovms::generate_ovms_graph(&target_dir, &normalized_model_id) {
         eprintln!("Warning: Failed to generate graph.pbtxt: {}", e);
     } else {
         println!("graph.pbtxt generated for model: {}", normalized_model_id);

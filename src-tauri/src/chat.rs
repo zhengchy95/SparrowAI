@@ -2,7 +2,11 @@ use serde::{ Deserialize, Serialize };
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{ Arc, Mutex };
 use uuid::Uuid;
+use openai::chat::{ ChatCompletion, ChatCompletionMessage, ChatCompletionMessageRole };
+use openai::Credentials;
+use tauri::{ AppHandle, Emitter };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -338,4 +342,173 @@ pub async fn get_conversation_history(session_id: String) -> Result<Vec<ChatMess
         .collect();
 
     Ok(messages)
+}
+
+// Chat with the currently loaded model using streaming
+#[tauri::command]
+pub async fn chat_with_loaded_model_streaming(
+    app: AppHandle,
+    message: String,
+    session_id: Option<String>,
+    include_history: Option<bool>,
+    system_prompt: Option<String>,
+    temperature: Option<f64>,
+    top_p: Option<f64>,
+    seed: Option<u64>,
+    max_tokens: Option<u32>,
+    max_completion_tokens: Option<u32>
+) -> Result<String, String> {
+    // Check if a model is loaded and get its name
+    let loaded_model_mutex = crate::ovms::LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
+    let model_name = {
+        let loaded_model_guard = loaded_model_mutex.lock().unwrap();
+        if loaded_model_guard.is_none() {
+            return Err("No model is currently loaded. Please load a model first.".to_string());
+        }
+        let model_id = loaded_model_guard.as_ref().unwrap();
+        model_id.split('/').next_back().unwrap_or(model_id).to_string()
+    };
+
+    println!("Chat using streaming model: {}", model_name);
+
+    // Create the messages vector
+    let system_message = system_prompt.unwrap_or_else(||
+        "You're an AI assistant that provides helpful responses.".to_string()
+    );
+
+    let mut messages = vec![ChatCompletionMessage {
+        role: ChatCompletionMessageRole::System,
+        content: Some(system_message),
+        ..Default::default()
+    }];
+
+    // Include conversation history if requested and session_id is provided
+    if include_history.unwrap_or(false) && session_id.is_some() {
+        match get_conversation_history(session_id.clone().unwrap()).await {
+            Ok(mut history) => {
+                // Remove the last user message if it matches the current message
+                // This prevents duplicate user messages
+                if let Some(last_msg) = history.last() {
+                    if last_msg.role == "user" && last_msg.content == message {
+                        history.pop(); // Remove the last message
+                    }
+                }
+
+                for msg in history {
+                    let role = match msg.role.as_str() {
+                        "user" => ChatCompletionMessageRole::User,
+                        "assistant" => ChatCompletionMessageRole::Assistant,
+                        _ => {
+                            println!("Skipping unknown role: {}", msg.role);
+                            continue;
+                        } // Skip unknown roles
+                    };
+
+                    messages.push(ChatCompletionMessage {
+                        role,
+                        content: Some(msg.content),
+                        ..Default::default()
+                    });
+                }
+            }
+            Err(e) => {
+                println!("Failed to get conversation history: {}", e);
+            }
+        }
+    }
+
+    // Always add the current user message
+    messages.push(ChatCompletionMessage {
+        role: ChatCompletionMessageRole::User,
+        content: Some(message.clone()),
+        ..Default::default()
+    });
+
+    println!("Sending streaming message: {}", message);
+
+    let credentials = Credentials::new("unused", "http://localhost:8000/v3");
+
+    // Create streaming chat completion
+    let mut builder = ChatCompletion::builder(&model_name, messages.clone())
+        .credentials(credentials)
+        .stream(true); // Enable streaming
+
+    // Add optional parameters if provided
+    if let Some(temp) = temperature {
+        builder = builder.temperature(temp as f32);
+    }
+
+    if let Some(top_p_val) = top_p {
+        builder = builder.top_p(top_p_val as f32);
+    }
+
+    if let Some(seed_val) = seed {
+        builder = builder.seed(seed_val);
+    }
+
+    if let Some(max_tokens_val) = max_tokens {
+        builder = builder.max_tokens(max_tokens_val);
+    }
+
+    if let Some(max_completion_tokens_val) = max_completion_tokens {
+        builder = builder.max_completion_tokens(max_completion_tokens_val);
+    }
+
+    let mut chat_stream = builder
+        .create_stream().await
+        .map_err(|e| format!("Failed to create chat stream: {}", e))?;
+
+    let mut full_response = String::new();
+
+    // Process streaming responses using recv() method for Receiver
+    loop {
+        match chat_stream.recv().await {
+            Some(response) => {
+                let mut should_finish = false;
+
+                if let Some(choice) = response.choices.first() {
+                    let delta = &choice.delta;
+                    if let Some(content) = &delta.content {
+                        let emit_result = app.emit(
+                            "chat-token",
+                            serde_json::json!({
+                            "token": content,
+                            "finished": false
+                        })
+                        );
+
+                        if let Err(e) = emit_result {
+                            eprintln!("Failed to emit token: {}", e);
+                        }
+
+                        full_response.push_str(content);
+                    }
+
+                    // Check if this is the last chunk AFTER processing content
+                    if choice.finish_reason.is_some() {
+                        should_finish = true;
+                    }
+                }
+
+                if should_finish {
+                    break;
+                }
+            }
+            None => {
+                // Stream ended
+                break;
+            }
+        }
+    }
+
+    // Emit completion signal
+    let _ = app.emit(
+        "chat-token",
+        serde_json::json!({
+        "token": "",
+        "finished": true
+    })
+    );
+
+    Ok(full_response)
 }

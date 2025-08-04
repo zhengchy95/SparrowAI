@@ -4,10 +4,8 @@ use std::path::PathBuf;
 use std::process::{ Command, Stdio, Child };
 use std::sync::{ Arc, Mutex };
 use zip::ZipArchive;
-use openai::chat::{ ChatCompletion, ChatCompletionMessage, ChatCompletionMessageRole };
-use openai::Credentials;
 use serde_json::{ json, Value };
-use tauri::{ AppHandle, Emitter };
+use tauri::AppHandle;
 
 const OVMS_DOWNLOAD_URL: &str =
     "https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_windows_python_off.zip";
@@ -17,7 +15,7 @@ const OVMS_ZIP_FILE: &str = "ovms_windows_python_off.zip";
 static OVMS_PROCESS: std::sync::OnceLock<Arc<Mutex<Option<Child>>>> = std::sync::OnceLock::new();
 
 // Global loaded model state
-static LOADED_MODEL: std::sync::OnceLock<Arc<Mutex<Option<String>>>> = std::sync::OnceLock::new();
+pub static LOADED_MODEL: std::sync::OnceLock<Arc<Mutex<Option<String>>>> = std::sync::OnceLock::new();
 
 pub fn get_sparrow_dir(_app_handle: Option<&AppHandle>) -> PathBuf {
     // Get the base .sparrow directory
@@ -956,175 +954,6 @@ pub async fn get_loaded_model() -> Result<Option<String>, String> {
     Ok(loaded_model_guard.clone())
 }
 
-// Chat with the currently loaded model using streaming
-#[tauri::command]
-pub async fn chat_with_loaded_model_streaming(
-    app: AppHandle,
-    message: String,
-    session_id: Option<String>,
-    include_history: Option<bool>,
-    system_prompt: Option<String>,
-    temperature: Option<f64>,
-    top_p: Option<f64>,
-    seed: Option<u64>,
-    max_tokens: Option<u32>,
-    max_completion_tokens: Option<u32>
-) -> Result<String, String> {
-    // Check if a model is loaded and get its name
-    let loaded_model_mutex = LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
-    let model_name = {
-        let loaded_model_guard = loaded_model_mutex.lock().unwrap();
-        if loaded_model_guard.is_none() {
-            return Err("No model is currently loaded. Please load a model first.".to_string());
-        }
-        let model_id = loaded_model_guard.as_ref().unwrap();
-        model_id.split('/').next_back().unwrap_or(model_id).to_string()
-    };
-
-    println!("Chat using streaming model: {}", model_name);
-
-    // Create the messages vector
-    let system_message = system_prompt.unwrap_or_else(||
-        "You're an AI assistant that provides helpful responses.".to_string()
-    );
-
-    let mut messages = vec![ChatCompletionMessage {
-        role: ChatCompletionMessageRole::System,
-        content: Some(system_message),
-        ..Default::default()
-    }];
-
-    // Include conversation history if requested and session_id is provided
-    if include_history.unwrap_or(false) && session_id.is_some() {
-        match crate::chat_sessions::get_conversation_history(session_id.clone().unwrap()).await {
-            Ok(mut history) => {
-                // Remove the last user message if it matches the current message
-                // This prevents duplicate user messages
-                if let Some(last_msg) = history.last() {
-                    if last_msg.role == "user" && last_msg.content == message {
-                        history.pop(); // Remove the last message
-                    }
-                }
-
-                for msg in history {
-                    let role = match msg.role.as_str() {
-                        "user" => ChatCompletionMessageRole::User,
-                        "assistant" => ChatCompletionMessageRole::Assistant,
-                        _ => {
-                            println!("Skipping unknown role: {}", msg.role);
-                            continue;
-                        } // Skip unknown roles
-                    };
-
-                    messages.push(ChatCompletionMessage {
-                        role,
-                        content: Some(msg.content),
-                        ..Default::default()
-                    });
-                }
-            }
-            Err(e) => {
-                println!("Failed to get conversation history: {}", e);
-            }
-        }
-    }
-
-    // Always add the current user message
-    messages.push(ChatCompletionMessage {
-        role: ChatCompletionMessageRole::User,
-        content: Some(message.clone()),
-        ..Default::default()
-    });
-
-    println!("Sending streaming message: {}", message);
-
-    let credentials = Credentials::new("unused", "http://localhost:8000/v3");
-
-    // Create streaming chat completion
-    let mut builder = ChatCompletion::builder(&model_name, messages.clone())
-        .credentials(credentials)
-        .stream(true); // Enable streaming
-
-    // Add optional parameters if provided
-    if let Some(temp) = temperature {
-        builder = builder.temperature(temp as f32);
-    }
-
-    if let Some(top_p_val) = top_p {
-        builder = builder.top_p(top_p_val as f32);
-    }
-
-    if let Some(seed_val) = seed {
-        builder = builder.seed(seed_val);
-    }
-
-    if let Some(max_tokens_val) = max_tokens {
-        builder = builder.max_tokens(max_tokens_val);
-    }
-
-    if let Some(max_completion_tokens_val) = max_completion_tokens {
-        builder = builder.max_completion_tokens(max_completion_tokens_val);
-    }
-
-    let mut chat_stream = builder
-        .create_stream().await
-        .map_err(|e| format!("Failed to create chat stream: {}", e))?;
-
-    let mut full_response = String::new();
-
-    // Process streaming responses using recv() method for Receiver
-    loop {
-        match chat_stream.recv().await {
-            Some(response) => {
-                let mut should_finish = false;
-
-                if let Some(choice) = response.choices.first() {
-                    let delta = &choice.delta;
-                    if let Some(content) = &delta.content {
-                        let emit_result = app.emit(
-                            "chat-token",
-                            serde_json::json!({
-                            "token": content,
-                            "finished": false
-                        })
-                        );
-
-                        if let Err(e) = emit_result {
-                            eprintln!("Failed to emit token: {}", e);
-                        }
-
-                        full_response.push_str(content);
-                    }
-
-                    // Check if this is the last chunk AFTER processing content
-                    if choice.finish_reason.is_some() {
-                        should_finish = true;
-                    }
-                }
-
-                if should_finish {
-                    break;
-                }
-            }
-            None => {
-                // Stream ended
-                break;
-            }
-        }
-    }
-
-    // Emit completion signal
-    let _ = app.emit(
-        "chat-token",
-        serde_json::json!({
-        "token": "",
-        "finished": true
-    })
-    );
-
-    Ok(full_response)
-}
-
 #[tauri::command]
 pub async fn check_ovms_status() -> Result<String, String> {
     let client = reqwest::Client::new();
@@ -1177,4 +1006,116 @@ pub async fn get_ovms_model_metadata(model_name: String) -> Result<String, Strin
             Err(format!("Model {} status check failed: {}", model_name, status_body))
         }
     }
+}
+
+pub fn generate_ovms_graph(model_dir: &PathBuf, model_id: &str) -> Result<(), String> {
+    // Extract model name from ID (e.g., "OpenVINO/Phi-3.5-mini-instruct-int4-ov" -> "Phi-3.5-mini-instruct-int4-ov")
+    let model_name = model_id.split('/').last().unwrap_or(model_id);
+
+    // Check if we have OpenVINO IR files (.xml and .bin)
+    let xml_files: Vec<_> = std::fs
+        ::read_dir(model_dir)
+        .map_err(|e| format!("Failed to read model directory: {}", e))?
+        .filter_map(|entry| {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("xml") {
+                    Some(path.file_stem().unwrap().to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if xml_files.is_empty() {
+        return Err("No OpenVINO IR files (.xml) found in model directory".to_string());
+    }
+
+    // For LLM models, look for common patterns
+    let main_model_name = xml_files
+        .iter()
+        .find(|name| (name.contains("model") || name.contains("openvino")))
+        .or_else(|| xml_files.first())
+        .ok_or("No suitable model file found")?;
+
+    // Check for tokenizer and detokenizer
+    let tokenizer_name = xml_files
+        .iter()
+        .find(|name| name.contains("tokenizer") && !name.contains("detokenizer"));
+    let detokenizer_name = xml_files.iter().find(|name| name.contains("detokenizer"));
+
+    // Generate graph.pbtxt content based on model type
+    let graph_content = if tokenizer_name.is_some() && detokenizer_name.is_some() {
+        // Full LLM pipeline with tokenizer/detokenizer
+        format!(
+            r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
+output_stream: "HTTP_RESPONSE_PAYLOAD:output"
+
+node: {{
+  name: "LLMExecutor"
+  calculator: "HttpLLMCalculator"
+  input_stream: "LOOPBACK:loopback"
+  input_stream: "HTTP_REQUEST_PAYLOAD:input"
+  input_side_packet: "LLM_NODE_RESOURCES:llm"
+  output_stream: "LOOPBACK:loopback"
+  output_stream: "HTTP_RESPONSE_PAYLOAD:output"
+  input_stream_info: {{
+    tag_index: 'LOOPBACK:0',
+    back_edge: true
+  }}
+  node_options: {{
+      [type.googleapis.com / mediapipe.LLMCalculatorOptions]: {{
+          models_path: "./",
+          plugin_config: '{{}}',
+          enable_prefix_caching: false,
+          cache_size: 2,
+          max_num_seqs: 256,
+          device: "GPU",
+      }}
+  }}
+  input_stream_handler {{
+    input_stream_handler: "SyncSetInputStreamHandler",
+    options {{
+      [mediapipe.SyncSetInputStreamHandlerOptions.ext] {{
+        sync_set {{
+          tag_index: "LOOPBACK:0"
+        }}
+      }}
+    }}
+  }}
+}}
+"#
+        )
+    } else {
+        // Simple model inference graph
+        format!(r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
+output_stream: "HTTP_RESPONSE_PAYLOAD:output"
+
+node {{
+  name: "ModelInference"
+  calculator: "OpenVINOInferenceCalculator"
+  input_stream: "HTTP_REQUEST_PAYLOAD:input"
+  output_stream: "HTTP_RESPONSE_PAYLOAD:output"
+  node_options: {{
+    [type.googleapis.com/mediapipe.OpenVINOInferenceCalculatorOptions]: {{
+      model_path: "./{}.xml"
+      device: "CPU"
+    }}
+  }}
+}}
+"#, main_model_name)
+    };
+
+    let graph_path = model_dir.join("graph.pbtxt");
+    std::fs
+        ::write(&graph_path, graph_content)
+        .map_err(|e| format!("Failed to write graph.pbtxt: {}", e))?;
+
+    // Only print if model graph generation is successful
+    println!("graph.pbtxt generated for model: {} at {}", model_name, graph_path.display());
+
+    Ok(())
 }
