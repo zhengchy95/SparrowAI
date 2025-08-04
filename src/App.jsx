@@ -33,6 +33,7 @@ function App() {
     sidebarCollapsed,
     setSidebarCollapsed,
     themeMode,
+    themeColor,
     showNotification,
     setIsOvmsRunning,
   } = useAppStore();
@@ -43,8 +44,8 @@ function App() {
     setTemporarySession,
   } = useChatStore();
 
-  // Create theme based on current mode
-  const theme = createAppTheme(themeMode);
+  // Create theme based on current mode and color
+  const theme = createAppTheme(themeMode, themeColor);
 
   // Initialize downloaded models check and progress listening
   useDownloadedModels();

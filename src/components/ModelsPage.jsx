@@ -31,7 +31,6 @@ import {
 import SearchBar from "./SearchBar";
 import ModelList from "./ModelList";
 import ModelDetails from "./ModelDetails";
-import OvmsStatusDialog from "./OvmsStatusDialog";
 import useAppStore from "../store/useAppStore";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -170,7 +169,6 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
 
 const ModelsPage = () => {
   const [activeTab, setActiveTab] = useState(0);
-  const [ovmsStatusDialogOpen, setOvmsStatusDialogOpen] = useState(false);
   const [loadedModelId, setLoadedModelId] = useState(null);
   const { downloadedModels } = useAppStore();
   const downloadedModelsList = Array.from(downloadedModels);
@@ -203,7 +201,7 @@ const ModelsPage = () => {
         onChange={handleTabChange}
         sx={{ mb: 3, borderBottom: 1, borderColor: "divider" }}
       >
-        <Tab icon={<SearchIcon />} label="Browse Models" iconPosition="start" />
+        <Tab icon={<SearchIcon />} label="Search Models" iconPosition="start" />
         <Tab
           icon={<DownloadIcon />}
           label={`Downloaded (${downloadedModelsList.length})`}
@@ -213,13 +211,6 @@ const ModelsPage = () => {
 
       {activeTab === 0 && (
         <Box sx={{ width: "100%", overflow: "auto" }}>
-          <Typography variant="h6" gutterBottom>
-            Hugging Face Models
-          </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            Search and download models from the Hugging Face Hub
-          </Typography>
-
           <SearchBar />
           <ModelList />
           <ModelDetails />
@@ -244,14 +235,6 @@ const ModelsPage = () => {
                 Manage your locally downloaded models
               </Typography>
             </Box>
-            <Button
-              variant="outlined"
-              onClick={() => setOvmsStatusDialogOpen(true)}
-              startIcon={<SettingsIcon />}
-              size="small"
-            >
-              Check OVMS
-            </Button>
           </Box>
 
           {downloadedModelsList.length === 0 ? (
@@ -288,11 +271,6 @@ const ModelsPage = () => {
         </Box>
       )}
 
-      {/* OVMS Status Dialog */}
-      <OvmsStatusDialog
-        open={ovmsStatusDialogOpen}
-        onClose={() => setOvmsStatusDialogOpen(false)}
-      />
     </Box>
   );
 };

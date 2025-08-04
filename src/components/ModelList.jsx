@@ -393,7 +393,7 @@ const ModelList = () => {
     return (
       <Box sx={{ p: 4, textAlign: "center" }}>
         <Typography variant="h6" color="text.secondary">
-          Search for Hugging Face models to get started
+          Search for OpenVINO models to get started
         </Typography>
       </Box>
     );

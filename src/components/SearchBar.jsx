@@ -75,8 +75,10 @@ const SearchBar = () => {
             flex: 1,
             fontSize: "16px",
           }}
-          placeholder="Search Hugging Face models..."
-          inputProps={{ "aria-label": "search hugging face models" }}
+          placeholder="Search OpenVINO models..."
+          inputProps={{
+            "aria-label": "search openvino models from hugging face",
+          }}
           value={localQuery}
           onChange={(e) => setLocalQuery(e.target.value)}
           onKeyPress={handleKeyPress}

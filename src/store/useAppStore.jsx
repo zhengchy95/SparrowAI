@@ -26,6 +26,7 @@ const useAppStore = create(
       settingsDialogOpen: false,
       sidebarCollapsed: false,
       themeMode: "dark", // 'light' or 'dark'
+      themeColor: "orange", // Default theme color
 
       // OVMS state
       isOvmsRunning: false,
@@ -85,6 +86,7 @@ const useAppStore = create(
         })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       setThemeMode: (mode) => set({ themeMode: mode }),
+      setThemeColor: (color) => set({ themeColor: color }),
 
       // OVMS actions
       setIsOvmsRunning: (isRunning) => set({ isOvmsRunning: isRunning }),
@@ -103,6 +105,7 @@ const useAppStore = create(
         downloadedModels: Array.from(state.downloadedModels),
         sidebarCollapsed: state.sidebarCollapsed,
         themeMode: state.themeMode,
+        themeColor: state.themeColor,
       }),
       merge: (persistedState, currentState) => {
         return {

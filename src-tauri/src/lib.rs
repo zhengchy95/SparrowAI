@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{ Arc, Mutex };
 use tauri::Emitter;
 
 mod huggingface;
@@ -226,15 +226,19 @@ async fn get_default_download_path() -> Result<String, String> {
 
 #[tauri::command]
 async fn get_initialization_status() -> Result<InitializationStatus, String> {
-    let status_mutex = INIT_STATUS.get_or_init(|| Arc::new(Mutex::new(InitializationStatus {
-        step: "not_started".to_string(),
-        message: "Initialization not started".to_string(),
-        progress: 0,
-        is_complete: false,
-        has_error: false,
-        error_message: None,
-    })));
-    
+    let status_mutex = INIT_STATUS.get_or_init(||
+        Arc::new(
+            Mutex::new(InitializationStatus {
+                step: "not_started".to_string(),
+                message: "Initialization not started".to_string(),
+                progress: 0,
+                is_complete: false,
+                has_error: false,
+                error_message: None,
+            })
+        )
+    );
+
     let status = status_mutex.lock().unwrap();
     Ok(status.clone())
 }
@@ -253,24 +257,30 @@ struct InitializationStatus {
 static INIT_STATUS: std::sync::OnceLock<Arc<Mutex<InitializationStatus>>> = std::sync::OnceLock::new();
 
 async fn initialize_ovms(app_handle: tauri::AppHandle) {
-    let status_mutex = INIT_STATUS.get_or_init(|| Arc::new(Mutex::new(InitializationStatus {
-        step: "starting".to_string(),
-        message: "Initializing OVMS...".to_string(),
-        progress: 0,
-        is_complete: false,
-        has_error: false,
-        error_message: None,
-    })));
-    
+    let status_mutex = INIT_STATUS.get_or_init(||
+        Arc::new(
+            Mutex::new(InitializationStatus {
+                step: "starting".to_string(),
+                message: "Initializing OVMS...".to_string(),
+                progress: 0,
+                is_complete: false,
+                has_error: false,
+                error_message: None,
+            })
+        )
+    );
+
     // Update status: Starting
     {
         let mut status = status_mutex.lock().unwrap();
         status.step = "checking".to_string();
         status.message = "Checking if OVMS is present...".to_string();
         status.progress = 10;
-        app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+        app_handle
+            .emit("ovms-init-status", &*status)
+            .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
     }
-    
+
     // Check if OVMS is present
     if !ovms::is_ovms_present(Some(&app_handle)) {
         // Update status: Downloading
@@ -279,9 +289,11 @@ async fn initialize_ovms(app_handle: tauri::AppHandle) {
             status.step = "downloading".to_string();
             status.message = "OVMS not found, downloading...".to_string();
             status.progress = 20;
-            app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+            app_handle
+                .emit("ovms-init-status", &*status)
+                .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
         }
-        
+
         match ovms::download_ovms(app_handle.clone()).await {
             Ok(msg) => {
                 println!("OVMS download: {}", msg);
@@ -289,15 +301,19 @@ async fn initialize_ovms(app_handle: tauri::AppHandle) {
                 status.step = "downloaded".to_string();
                 status.message = "OVMS downloaded successfully".to_string();
                 status.progress = 70;
-                app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
-            },
+                app_handle
+                    .emit("ovms-init-status", &*status)
+                    .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+            }
             Err(e) => {
                 eprintln!("Failed to download OVMS: {}", e);
                 let mut status = status_mutex.lock().unwrap();
                 status.has_error = true;
                 status.error_message = Some(format!("Failed to download OVMS: {}", e));
                 status.message = "Download failed".to_string();
-                app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+                app_handle
+                    .emit("ovms-init-status", &*status)
+                    .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
                 return;
             }
         }
@@ -307,18 +323,22 @@ async fn initialize_ovms(app_handle: tauri::AppHandle) {
         status.step = "present".to_string();
         status.message = "OVMS already present".to_string();
         status.progress = 70;
-        app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+        app_handle
+            .emit("ovms-init-status", &*status)
+            .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
     }
-    
+
     // Start OVMS server
     {
         let mut status = status_mutex.lock().unwrap();
         status.step = "starting_server".to_string();
         status.message = "Starting OVMS server...".to_string();
         status.progress = 80;
-        app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+        app_handle
+            .emit("ovms-init-status", &*status)
+            .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
     }
-    
+
     match ovms::start_ovms_server(app_handle.clone()).await {
         Ok(msg) => {
             println!("OVMS startup: {}", msg);
@@ -327,15 +347,19 @@ async fn initialize_ovms(app_handle: tauri::AppHandle) {
             status.message = "OVMS initialization complete".to_string();
             status.progress = 100;
             status.is_complete = true;
-            app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
-        },
+            app_handle
+                .emit("ovms-init-status", &*status)
+                .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+        }
         Err(e) => {
             eprintln!("Failed to start OVMS server: {}", e);
             let mut status = status_mutex.lock().unwrap();
             status.has_error = true;
             status.error_message = Some(format!("Failed to start OVMS server: {}", e));
             status.message = "Server startup failed".to_string();
-            app_handle.emit("ovms-init-status", &*status).unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
+            app_handle
+                .emit("ovms-init-status", &*status)
+                .unwrap_or_else(|e| eprintln!("Failed to emit status: {}", e));
         }
     }
 }
@@ -362,12 +386,9 @@ pub fn run() {
                 ovms::download_ovms,
                 ovms::check_ovms_present,
                 ovms::start_ovms_server,
-                ovms::run_ovms,
                 ovms::create_ovms_config,
                 ovms::update_ovms_config,
                 ovms::reload_ovms_config,
-                ovms::run_ovms_with_config,
-                ovms::download_ovms_model,
                 ovms::load_model,
                 ovms::unload_model,
                 ovms::get_loaded_model,
