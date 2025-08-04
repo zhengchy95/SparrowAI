@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -10,17 +10,17 @@ import {
   IconButton,
   Alert,
   CircularProgress,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Close as CloseIcon,
   Settings as SettingsIcon,
-} from '@mui/icons-material';
-import { invoke } from '@tauri-apps/api/core';
+} from "@mui/icons-material";
+import { invoke } from "@tauri-apps/api/core";
 
 const OvmsStatusDialog = ({ open, onClose }) => {
   const [ovmsStatus, setOvmsStatus] = useState(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
-  const [statusError, setStatusError] = useState('');
+  const [statusError, setStatusError] = useState("");
 
   // Auto-check status when dialog opens
   useEffect(() => {
@@ -31,15 +31,15 @@ const OvmsStatusDialog = ({ open, onClose }) => {
 
   const handleCheckOvmsStatus = async () => {
     setCheckingStatus(true);
-    setStatusError('');
+    setStatusError("");
     setOvmsStatus(null);
 
     try {
-      const response = await invoke('check_ovms_status');
+      const response = await invoke("check_ovms_status");
       const statusData = JSON.parse(response);
       setOvmsStatus(statusData);
     } catch (error) {
-      console.error('Failed to check OVMS status:', error);
+      console.error("OvmsStatusDialog: Failed to check OVMS status:", error);
       setStatusError(error.toString());
     } finally {
       setCheckingStatus(false);
@@ -48,38 +48,47 @@ const OvmsStatusDialog = ({ open, onClose }) => {
 
   const handleGetModelDetails = async (modelName) => {
     try {
-      const response = await invoke('get_ovms_model_metadata', { modelName });
+      const response = await invoke("get_ovms_model_metadata", { modelName });
       const metadataData = JSON.parse(response);
-      console.log('Model metadata:', metadataData);
-      
+      // ...removed debug log...
+
       // Create a more detailed alert with model information
-      alert(`Model Details for ${modelName}:\n\n${JSON.stringify(metadataData, null, 2)}`);
+      alert(
+        `Model Details for ${modelName}:\n\n${JSON.stringify(
+          metadataData,
+          null,
+          2
+        )}`
+      );
     } catch (error) {
-      console.error('Failed to get model metadata:', error);
+      console.error("OvmsStatusDialog: Failed to get model metadata:", error);
       alert(`Failed to get details for ${modelName}:\n${error.toString()}`);
     }
   };
 
   const handleClose = () => {
     setOvmsStatus(null);
-    setStatusError('');
+    setStatusError("");
     setCheckingStatus(false);
     onClose();
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={handleClose}
-      maxWidth="md"
-      fullWidth
-    >
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center" }}>
             <SettingsIcon sx={{ mr: 1 }} />
             <Typography variant="h6">
-              {checkingStatus ? 'Checking OVMS Status...' : 'OVMS Server Status'}
+              {checkingStatus
+                ? "Checking OVMS Status..."
+                : "OVMS Server Status"}
             </Typography>
           </Box>
           <IconButton onClick={handleClose} size="small">
@@ -87,11 +96,11 @@ const OvmsStatusDialog = ({ open, onClose }) => {
           </IconButton>
         </Box>
       </DialogTitle>
-      
+
       <DialogContent>
         <Box sx={{ py: 2 }}>
           {checkingStatus && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
               <CircularProgress size={24} />
               <Typography variant="body1">
                 Checking OVMS server status...
@@ -130,25 +139,38 @@ const OvmsStatusDialog = ({ open, onClose }) => {
                         variant="text"
                         size="small"
                         onClick={() => handleGetModelDetails(modelName)}
-                        sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}
+                        sx={{
+                          p: 0,
+                          textTransform: "none",
+                          justifyContent: "flex-start",
+                        }}
                       >
-                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                        <Typography variant="body2" sx={{ fontWeight: "bold" }}>
                           {modelName}
                         </Typography>
                       </Button>
                       {modelInfo.model_version_status?.map((version, idx) => (
-                        <Typography 
-                          key={idx} 
-                          variant="body2" 
-                          color={version.state === 'AVAILABLE' ? 'success.main' : 'error.main'}
+                        <Typography
+                          key={idx}
+                          variant="body2"
+                          color={
+                            version.state === "AVAILABLE"
+                              ? "success.main"
+                              : "error.main"
+                          }
                           sx={{ ml: 1 }}
                         >
-                          Version {version.version}: {version.state} ({version.status?.error_message || 'OK'})
-                          {version.state !== 'AVAILABLE' && (
-                            <Typography 
-                              variant="caption" 
-                              color="text.secondary" 
-                              sx={{ display: 'block', ml: 1, fontStyle: 'italic' }}
+                          Version {version.version}: {version.state} (
+                          {version.status?.error_message || "OK"})
+                          {version.state !== "AVAILABLE" && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{
+                                display: "block",
+                                ml: 1,
+                                fontStyle: "italic",
+                              }}
                             >
                               Click model name for detailed error info
                             </Typography>

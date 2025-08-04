@@ -80,39 +80,21 @@ const Sidebar = ({
   const loadChatSessions = async () => {
     try {
       setLoadingChatSessions(true);
-      console.log("Sidebar: Loading chat sessions. Current state:", {
-        temporarySession: temporarySession?.id,
-        activeChatSessionId,
-      });
-
       const result = await invoke("get_chat_sessions");
       setChatSessions(result.sessions || {});
-
-      console.log("Sidebar: Loaded sessions from storage:", {
-        sessionCount: Object.keys(result.sessions || {}).length,
-        activeSessionFromStorage: result.active_session_id,
-      });
 
       // Don't override active session if we already have a temporary session
       // This ensures the new temporary session created on startup is preserved
       if (!temporarySession && !activeChatSessionId) {
-        console.log("Sidebar: No temporary session, setting from storage");
         setActiveChatSessionId(result.active_session_id);
 
         // If no active session exists, create a new chat automatically
         if (!result.active_session_id) {
-          console.log(
-            "Sidebar: No active session in storage, creating new chat"
-          );
           await createNewChat();
         }
-      } else {
-        console.log(
-          "Sidebar: Preserving existing temporary session or active session"
-        );
       }
     } catch (error) {
-      console.error("Failed to load chat sessions:", error);
+      console.error("Sidebar: Failed to load chat sessions:", error);
       showNotification("Failed to load chat sessions", "error");
     } finally {
       setLoadingChatSessions(false);
@@ -124,18 +106,13 @@ const Sidebar = ({
       const newSession = await invoke("create_temporary_chat_session", {
         title: "New Chat",
       });
-
-      // Clear any existing temporary session
       clearTemporarySession();
-
-      // Set this as the temporary session (not saved to storage yet)
       setTemporarySession(newSession);
       setActiveChatSessionId(newSession.id);
-
       onPageChange("chat");
       showNotification("New chat created", "success");
     } catch (error) {
-      console.error("Failed to create new chat:", error);
+      console.error("Sidebar: Failed to create new chat:", error);
       showNotification("Failed to create new chat", "error");
     }
   };
@@ -144,15 +121,12 @@ const Sidebar = ({
     try {
       await invoke("set_active_chat_session", { sessionId });
       setActiveChatSessionId(sessionId);
-
-      // Clear temporary session when selecting a persisted one
       if (temporarySession && temporarySession.id !== sessionId) {
         clearTemporarySession();
       }
-
       onPageChange("chat");
     } catch (error) {
-      console.error("Failed to select chat session:", error);
+      console.error("Sidebar: Failed to select chat session:", error);
       showNotification("Failed to select chat session", "error");
     }
   };
@@ -162,15 +136,12 @@ const Sidebar = ({
     try {
       await invoke("delete_chat_session", { sessionId });
       removeChatSession(sessionId);
-
-      // If we deleted the active session, create a new chat session
       if (sessionId === activeChatSessionId) {
         await createNewChat();
       }
-
       showNotification("Chat session deleted", "success");
     } catch (error) {
-      console.error("Failed to delete chat session:", error);
+      console.error("Sidebar: Failed to delete chat session:", error);
       showNotification("Failed to delete chat session", "error");
     }
   };

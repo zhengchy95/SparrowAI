@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Dialog,
   DialogTitle,
@@ -18,7 +18,7 @@ import {
   TextField,
   Slider,
   Grid,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Close as CloseIcon,
   Settings as SettingsIcon,
@@ -27,17 +27,17 @@ import {
   History as HistoryIcon,
   Tune as TuneIcon,
   TextFields as TextFieldsIcon,
-} from '@mui/icons-material';
-import useAppStore from '../store/useAppStore';
+} from "@mui/icons-material";
+import useAppStore from "../store/useAppStore";
 
 const SettingsDialog = () => {
-  const { 
-    settingsDialogOpen, 
+  const {
+    settingsDialogOpen,
     setSettingsDialogOpen,
     themeMode,
     setThemeMode,
     settings,
-    updateSettings
+    updateSettings,
   } = useAppStore();
 
   const handleClose = () => {
@@ -66,35 +66,43 @@ const SettingsDialog = () => {
 
   const handleSeedChange = (event) => {
     const value = event.target.value;
-    const parsed = value === '' ? null : parseInt(value);
+    const parsed = value === "" ? null : parseInt(value);
     // Ensure seed is positive (u64 requirement)
     updateSettings({ seed: parsed && parsed >= 0 ? parsed : null });
   };
 
   const handleMaxTokensChange = (event) => {
     const value = event.target.value;
-    const parsed = value === '' ? null : parseInt(value);
+    const parsed = value === "" ? null : parseInt(value);
     // Ensure positive values
     updateSettings({ maxTokens: parsed && parsed > 0 ? parsed : null });
   };
 
   const handleMaxCompletionTokensChange = (event) => {
     const value = event.target.value;
-    const parsed = value === '' ? null : parseInt(value);
+    const parsed = value === "" ? null : parseInt(value);
     // Ensure positive values
-    updateSettings({ maxCompletionTokens: parsed && parsed > 0 ? parsed : null });
+    updateSettings({
+      maxCompletionTokens: parsed && parsed > 0 ? parsed : null,
+    });
   };
 
   return (
-    <Dialog 
-      open={settingsDialogOpen} 
+    <Dialog
+      open={settingsDialogOpen}
       onClose={handleClose}
       maxWidth="md"
       fullWidth
     >
       <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center" }}>
             <SettingsIcon sx={{ mr: 1 }} />
             <Typography variant="h6">Settings</Typography>
           </Box>
@@ -103,13 +111,13 @@ const SettingsDialog = () => {
           </IconButton>
         </Box>
       </DialogTitle>
-      
+
       <DialogContent>
         <Box sx={{ py: 2 }}>
           <Typography variant="h6" gutterBottom>
             Appearance
           </Typography>
-          
+
           <FormControl component="fieldset" sx={{ mb: 3 }}>
             <FormLabel component="legend" sx={{ mb: 2, fontWeight: 500 }}>
               Theme Mode
@@ -119,21 +127,21 @@ const SettingsDialog = () => {
               onChange={handleThemeChange}
               sx={{ ml: 1 }}
             >
-              <FormControlLabel 
-                value="light" 
-                control={<Radio />} 
+              <FormControlLabel
+                value="light"
+                control={<Radio />}
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <LightModeIcon sx={{ fontSize: 20 }} />
                     Light
                   </Box>
                 }
               />
-              <FormControlLabel 
-                value="dark" 
-                control={<Radio />} 
+              <FormControlLabel
+                value="dark"
+                control={<Radio />}
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <DarkModeIcon sx={{ fontSize: 20 }} />
                     Dark
                   </Box>
@@ -147,7 +155,7 @@ const SettingsDialog = () => {
           <Typography variant="h6" gutterBottom>
             Chat Settings
           </Typography>
-          
+
           <FormControlLabel
             control={
               <Switch
@@ -157,7 +165,7 @@ const SettingsDialog = () => {
               />
             }
             label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <HistoryIcon sx={{ fontSize: 20 }} />
                 <Box>
                   <Typography variant="body2" fontWeight={500}>
@@ -169,11 +177,15 @@ const SettingsDialog = () => {
                 </Box>
               </Box>
             }
-            sx={{ alignItems: 'flex-start', mb: 2 }}
+            sx={{ alignItems: "flex-start", mb: 2 }}
           />
 
           <Box sx={{ mt: 3 }}>
-            <Typography variant="body2" fontWeight={500} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography
+              variant="body2"
+              fontWeight={500}
+              sx={{ mb: 1, display: "flex", alignItems: "center", gap: 1 }}
+            >
               <TextFieldsIcon sx={{ fontSize: 20 }} />
               System Prompt
             </Typography>
@@ -181,7 +193,10 @@ const SettingsDialog = () => {
               fullWidth
               multiline
               rows={3}
-              value={settings.systemPrompt ?? "You're an AI assistant that provides helpful responses."}
+              value={
+                settings.systemPrompt ??
+                "You're an AI assistant that provides helpful responses."
+              }
               onChange={handleSystemPromptChange}
               placeholder="Enter system prompt for the AI assistant..."
               variant="outlined"
@@ -190,13 +205,17 @@ const SettingsDialog = () => {
             />
           </Box>
 
-          <Typography variant="body2" fontWeight={500} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography
+            variant="body2"
+            fontWeight={500}
+            sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}
+          >
             <TuneIcon sx={{ fontSize: 20 }} />
             Model Parameters
           </Typography>
 
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
+            <Grid size={12}>
               <Typography variant="body2" gutterBottom>
                 Temperature: {settings.temperature ?? 0.7}
               </Typography>
@@ -207,9 +226,9 @@ const SettingsDialog = () => {
                 max={2}
                 step={0.1}
                 marks={[
-                  { value: 0, label: '0' },
-                  { value: 1, label: '1' },
-                  { value: 2, label: '2' }
+                  { value: 0, label: "0" },
+                  { value: 1, label: "1" },
+                  { value: 2, label: "2" },
                 ]}
                 valueLabelDisplay="auto"
                 size="small"
@@ -219,7 +238,7 @@ const SettingsDialog = () => {
               </Typography>
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid size={12}>
               <Typography variant="body2" gutterBottom>
                 Top P: {settings.topP ?? 1.0}
               </Typography>
@@ -230,9 +249,9 @@ const SettingsDialog = () => {
                 max={1}
                 step={0.05}
                 marks={[
-                  { value: 0, label: '0' },
-                  { value: 0.5, label: '0.5' },
-                  { value: 1, label: '1' }
+                  { value: 0, label: "0" },
+                  { value: 0.5, label: "0.5" },
+                  { value: 1, label: "1" },
                 ]}
                 valueLabelDisplay="auto"
                 size="small"
@@ -242,13 +261,13 @@ const SettingsDialog = () => {
               </Typography>
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Grid container spacing={2}>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Seed"
                     type="number"
-                    value={settings.seed ?? ''}
+                    value={settings.seed ?? ""}
                     onChange={handleSeedChange}
                     placeholder="Random"
                     variant="outlined"
@@ -258,11 +277,11 @@ const SettingsDialog = () => {
                     helperText="For reproducible outputs"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Max Tokens"
                     type="number"
-                    value={settings.maxTokens ?? ''}
+                    value={settings.maxTokens ?? ""}
                     onChange={handleMaxTokensChange}
                     placeholder="Auto"
                     variant="outlined"
@@ -272,11 +291,11 @@ const SettingsDialog = () => {
                     helperText="Total token limit"
                   />
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={4}>
                   <TextField
                     label="Max Completion Tokens"
                     type="number"
-                    value={settings.maxCompletionTokens ?? ''}
+                    value={settings.maxCompletionTokens ?? ""}
                     onChange={handleMaxCompletionTokensChange}
                     placeholder="Auto"
                     variant="outlined"
@@ -295,7 +314,7 @@ const SettingsDialog = () => {
           <Typography variant="h6" gutterBottom>
             Application Settings
           </Typography>
-          
+
           <Typography variant="body2" color="text.secondary">
             Additional settings coming soon.
           </Typography>

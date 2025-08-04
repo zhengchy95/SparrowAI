@@ -55,7 +55,7 @@ const ModelCard = ({ modelId }) => {
         setModel(modelInfo);
         setError(null);
       } catch (err) {
-        console.error("Failed to fetch model info:", err);
+        console.error("ModelList: Failed to fetch model info:", err);
         setError(err.toString());
       } finally {
         setLoading(false);
@@ -80,7 +80,7 @@ const ModelCard = ({ modelId }) => {
         downloadPath: null, // Use default path
       });
 
-      console.log("Download completed:", result);
+      // ...removed debug log...
       addDownloadedModel(model.id);
 
       // Extract model name and size from result
@@ -94,7 +94,7 @@ const ModelCard = ({ modelId }) => {
         "success"
       );
     } catch (error) {
-      console.error("Download failed:", error);
+      console.error("ModelList: Download failed:", error);
       showNotification(`Download failed: ${error}`, "error");
     } finally {
       setModelDownloading(model.id, false);
@@ -119,7 +119,7 @@ const ModelCard = ({ modelId }) => {
       removeDownloadedModel(model.id);
       showNotification(result, "success");
     } catch (error) {
-      console.error("Delete failed:", error);
+      console.error("ModelList: Delete failed:", error);
       showNotification(`Failed to delete model: ${error}`, "error");
     }
   };

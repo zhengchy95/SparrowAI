@@ -65,7 +65,7 @@ const InitialSetup = ({ onSetupComplete }) => {
       setProgress(15);
 
       const downloadResult = await invoke("download_ovms");
-      console.log("Download result:", downloadResult);
+      // ...removed debug log...
 
       // Step 2: Extraction completed
       setCurrentStep(1);
@@ -82,10 +82,10 @@ const InitialSetup = ({ onSetupComplete }) => {
       // Start the OVMS server after download
       try {
         await invoke("start_ovms_server"); // Use the new command
-        console.log("OVMS server started successfully");
+        // ...removed debug log...
         setIsOvmsRunning(true); // Update the OVMS running state
       } catch (serverErr) {
-        console.warn("OVMS server startup warning:", serverErr);
+        console.warn("InitialSetup: OVMS server startup warning:", serverErr);
         setIsOvmsRunning(false); // Ensure state is set to false on error
         // Don't fail the setup if server startup has issues
       }
@@ -100,7 +100,7 @@ const InitialSetup = ({ onSetupComplete }) => {
         onSetupComplete();
       }, 2000);
     } catch (err) {
-      console.error("Setup failed:", err);
+      console.error("InitialSetup: Setup failed:", err);
       setError(err.toString());
       setStatusMessage(
         "Setup failed. Please check your internet connection and try again."

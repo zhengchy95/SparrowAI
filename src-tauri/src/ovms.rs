@@ -698,9 +698,13 @@ pub async fn download_ovms_model(
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        println!("Model download completed for: {}", model_name);
-        println!("STDOUT: {}", stdout);
-        println!("STDERR: {}", stderr);
+        println!("Model '{}' download completed.", model_name);
+        if !stdout.trim().is_empty() {
+            println!("OVMS STDOUT: {}", stdout.trim());
+        }
+        if !stderr.trim().is_empty() {
+            eprintln!("OVMS STDERR: {}", stderr.trim());
+        }
 
         // Update the main config with the downloaded model
         update_ovms_config(app_handle, model_name.clone(), format!("model/{}", model_name)).await?;
@@ -813,21 +817,21 @@ pub async fn start_ovms_server(app_handle: AppHandle) -> Result<String, String> 
                 *process_guard = Some(child);
             } // Guard is dropped here
 
-            println!("OVMS server started successfully and is running on port 8000");
+            println!("OVMS server started on port 8000.");
 
             // Verify the server is responding (now the guard is dropped)
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
             match check_ovms_status().await {
                 Ok(status) => {
-                    println!("OVMS server health check passed: {}", status);
+                    println!("OVMS server health check: {}", status);
                 }
                 Err(e) => {
-                    println!("OVMS server health check failed: {}", e);
+                    eprintln!("OVMS server health check failed: {}", e);
                     // Don't fail here as the process might still be starting up
                 }
             }
 
-            Ok("OVMS server started successfully".to_string())
+            Ok("OVMS server started successfully.".to_string())
         }
         Err(e) => { Err(format!("Failed to check OVMS status: {}", e)) }
     }
@@ -849,14 +853,14 @@ pub fn stop_ovms_server() -> Result<(), String> {
         // Wait for the process to exit
         match child.wait() {
             Ok(status) => {
-                println!("OVMS server stopped with status: {}", status);
+                println!("OVMS server stopped. Status: {}", status);
             }
             Err(e) => {
                 eprintln!("Error waiting for OVMS process to exit: {}", e);
             }
         }
     } else {
-        println!("No OVMS process to stop");
+        println!("No OVMS process was running.");
     }
 
     // Also try the system-wide kill as fallback
@@ -1110,18 +1114,6 @@ pub async fn chat_with_loaded_model_streaming(
     max_tokens: Option<u32>,
     max_completion_tokens: Option<u32>
 ) -> Result<String, String> {
-    // Debug all received parameters
-    println!("=== Rust Function Parameters Debug ===");
-    println!("message: {:?}", message);
-    println!("session_id: {:?}", session_id);
-    println!("include_history: {:?}", include_history);
-    println!("system_prompt: {:?}", system_prompt);
-    println!("temperature: {:?}", temperature);
-    println!("top_p: {:?}", top_p);
-    println!("seed: {:?}", seed);
-    println!("max_tokens: {:?}", max_tokens);
-    println!("max_completion_tokens: {:?}", max_completion_tokens);
-    println!("======================================");
     // Check if a model is loaded and get its name
     let loaded_model_mutex = LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
     let model_name = {
@@ -1133,7 +1125,7 @@ pub async fn chat_with_loaded_model_streaming(
         model_id.split('/').next_back().unwrap_or(model_id).to_string()
     };
 
-    println!("Using streaming model: {}", model_name);
+    println!("Chat using streaming model: {}", model_name);
 
     // Create the messages vector
     let system_message = system_prompt.unwrap_or_else(||
@@ -1148,25 +1140,14 @@ pub async fn chat_with_loaded_model_streaming(
 
     // Include conversation history if requested and session_id is provided
     if include_history.unwrap_or(false) && session_id.is_some() {
-        println!("=== Including conversation history ===");
-        println!("Session ID: {:?}", session_id);
-
         match crate::chat_sessions::get_conversation_history(session_id.clone().unwrap()).await {
             Ok(mut history) => {
-                println!("Retrieved {} history messages", history.len());
-
                 // Remove the last user message if it matches the current message
                 // This prevents duplicate user messages
                 if let Some(last_msg) = history.last() {
                     if last_msg.role == "user" && last_msg.content == message {
                         history.pop(); // Remove the last message
-                        println!("Removed duplicate user message from history");
                     }
-                }
-
-                println!("Using {} history messages after filtering", history.len());
-                for (i, msg) in history.iter().enumerate() {
-                    println!("History {}: Role: {}, Content: {}", i, msg.role, msg.content);
                 }
 
                 for msg in history {
@@ -1190,7 +1171,6 @@ pub async fn chat_with_loaded_model_streaming(
                 println!("Failed to get conversation history: {}", e);
             }
         }
-        println!("=== End conversation history ===");
     }
 
     // Always add the current user message
@@ -1201,13 +1181,6 @@ pub async fn chat_with_loaded_model_streaming(
     });
 
     println!("Sending streaming message: {}", message);
-    println!("=== Messages being sent to OVMS ===");
-    for (i, msg) in messages.iter().enumerate() {
-        println!("Message {}: Role: {:?}, Content: {:?}", i, msg.role, msg.content);
-    }
-    println!("Total messages: {}", messages.len());
-    println!("Model name: {}", model_name);
-    println!("=====================================");
 
     let credentials = Credentials::new("unused", "http://localhost:8000/v3");
 
