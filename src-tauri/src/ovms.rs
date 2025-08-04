@@ -442,36 +442,6 @@ pub async fn run_ovms(app_handle: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn chat_with_ovms(message: String) -> Result<String, String> {
-    // Use a dummy API key since OVMS doesn't require authentication
-    let credentials = Credentials::new("unused", "http://localhost:8000/v3");
-
-    let messages = vec![ChatCompletionMessage {
-        role: ChatCompletionMessageRole::User,
-        content: Some(message),
-        name: None,
-        function_call: None,
-        tool_call_id: None,
-        tool_calls: None,
-    }];
-
-    let response = ChatCompletion::builder("OpenVINO/Phi-3.5-mini-instruct-int4-ov", messages)
-        .credentials(credentials)
-        .create().await
-        .map_err(|e| format!("Failed to send chat request: {}", e))?;
-
-    if let Some(choice) = response.choices.first() {
-        if let Some(content) = &choice.message.content {
-            Ok(content.clone())
-        } else {
-            Err("No content in response".to_string())
-        }
-    } else {
-        Err("No choices in response".to_string())
-    }
-}
-
-#[tauri::command]
 pub async fn create_ovms_config(
     app_handle: AppHandle,
     model_name: String,
@@ -881,64 +851,6 @@ pub fn stop_ovms_server() -> Result<(), String> {
     Ok(())
 }
 
-// Debug command to test OVMS paths and directory structure
-#[tauri::command]
-pub async fn debug_ovms_paths(app_handle: AppHandle) -> Result<String, String> {
-    let sparrow_dir = get_sparrow_dir(Some(&app_handle));
-    let ovms_dir = get_ovms_dir(Some(&app_handle));
-    let ovms_exe = get_ovms_exe_path(Some(&app_handle));
-    let config_path = get_ovms_config_path(Some(&app_handle));
-
-    let mut debug_info = Vec::new();
-    debug_info.push(format!("Sparrow Directory: {}", sparrow_dir.display()));
-    debug_info.push(format!("OVMS Directory: {}", ovms_dir.display()));
-    debug_info.push(format!("OVMS Executable: {}", ovms_exe.display()));
-    debug_info.push(format!("OVMS Config: {}", config_path.display()));
-    debug_info.push(format!("Sparrow dir exists: {}", sparrow_dir.exists()));
-    debug_info.push(format!("OVMS dir exists: {}", ovms_dir.exists()));
-    debug_info.push(format!("Executable exists: {}", ovms_exe.exists()));
-
-    // Check .sparrow directory contents
-    if sparrow_dir.exists() {
-        debug_info.push("Sparrow directory contents:".to_string());
-        if let Ok(entries) = fs::read_dir(&sparrow_dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    debug_info.push(
-                        format!("  {} ({})", path.display(), if path.is_dir() {
-                            "DIR"
-                        } else {
-                            "FILE"
-                        })
-                    );
-                }
-            }
-        }
-    }
-
-    // Check ovms directory contents
-    if ovms_dir.exists() {
-        debug_info.push("OVMS directory contents:".to_string());
-        if let Ok(entries) = fs::read_dir(&ovms_dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    debug_info.push(
-                        format!("  {} ({})", path.display(), if path.is_dir() {
-                            "DIR"
-                        } else {
-                            "FILE"
-                        })
-                    );
-                }
-            }
-        }
-    }
-
-    Ok(debug_info.join("\n"))
-}
-
 // Load a model into OVMS
 #[tauri::command]
 pub async fn load_model(app_handle: AppHandle, model_id: String) -> Result<String, String> {
@@ -1042,62 +954,6 @@ pub async fn get_loaded_model() -> Result<Option<String>, String> {
     let loaded_model_mutex = LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
     let loaded_model_guard = loaded_model_mutex.lock().unwrap();
     Ok(loaded_model_guard.clone())
-}
-
-// Chat with the currently loaded model
-#[tauri::command]
-pub async fn chat_with_loaded_model(message: String) -> Result<String, String> {
-    // Check if a model is loaded and get its name
-    let loaded_model_mutex = LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
-    let model_name = {
-        let loaded_model_guard = loaded_model_mutex.lock().unwrap();
-        if loaded_model_guard.is_none() {
-            return Err("No model is currently loaded. Please load a model first.".to_string());
-        }
-        let model_id = loaded_model_guard.as_ref().unwrap();
-        model_id.split('/').next_back().unwrap_or(model_id).to_string()
-    };
-
-    println!("Using model name: {}", model_name);
-
-    // Create the messages vector following the example structure exactly
-    let messages = vec![
-        ChatCompletionMessage {
-            role: ChatCompletionMessageRole::System,
-            content: Some("You're an AI assistant that provides helpful responses.".to_string()),
-            ..Default::default()
-        },
-        ChatCompletionMessage {
-            role: ChatCompletionMessageRole::User,
-            content: Some(message.clone()),
-            ..Default::default()
-        }
-    ];
-
-    println!("Sending message: {}", message);
-    println!("To model: {}", model_name);
-
-    let credentials = Credentials::new("unused", "http://localhost:8000/v3");
-
-    // Create ChatCompletion using the exact builder pattern from the example
-    let chat_completion = ChatCompletion::builder(&model_name, messages.clone())
-        .credentials(credentials)
-        .create().await
-        .map_err(|e| format!("Failed to send chat request: {}", e))?;
-
-    // Print the entire response for debugging
-    println!("Full response: {:#?}", chat_completion);
-    println!("Response choices length: {}", chat_completion.choices.len());
-
-    if let Some(choice) = chat_completion.choices.first() {
-        if let Some(content) = &choice.message.content {
-            Ok(content.clone())
-        } else {
-            Err(format!("No content in response. Choice message: {:#?}", choice.message))
-        }
-    } else {
-        Err(format!("No choices in response. Full response: {:#?}", chat_completion))
-    }
 }
 
 // Chat with the currently loaded model using streaming
