@@ -1,12 +1,12 @@
-import React, { useEffect } from 'react';
-import { Snackbar, Alert } from '@mui/material';
-import useAppStore from '../store/useAppStore';
+import React, { useEffect } from "react";
+import { Snackbar, Alert } from "@mui/material";
+import useAppStore from "../store/useAppStore";
 
 const NotificationSnackbar = () => {
   const { notification, clearNotification } = useAppStore();
 
   const handleClose = (event, reason) => {
-    if (reason === 'clickaway') {
+    if (reason === "clickaway") {
       return;
     }
     clearNotification();
@@ -14,8 +14,14 @@ const NotificationSnackbar = () => {
 
   useEffect(() => {
     if (notification) {
-      // Auto-close after 6 seconds for success/info, 10 seconds for errors
-      const timeout = notification.type === 'error' ? 10000 : 6000;
+      // Use custom timeout if provided, otherwise use default based on type
+      const timeout =
+        notification.timeout !== null
+          ? notification.timeout
+          : notification.type === "error"
+          ? 10000
+          : 6000;
+
       const timer = setTimeout(() => {
         clearNotification();
       }, timeout);
@@ -31,15 +37,15 @@ const NotificationSnackbar = () => {
       open={!!notification}
       autoHideDuration={null}
       onClose={handleClose}
-      anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      anchorOrigin={{ vertical: "top", horizontal: "right" }}
     >
-      <Alert 
-        onClose={handleClose} 
-        severity={notification.type} 
-        sx={{ 
-          width: '100%',
+      <Alert
+        onClose={handleClose}
+        severity={notification.type}
+        sx={{
+          width: "100%",
           maxWidth: 400,
-          whiteSpace: 'pre-line' // Preserve line breaks
+          whiteSpace: "pre-line", // Preserve line breaks
         }}
       >
         {notification.message}

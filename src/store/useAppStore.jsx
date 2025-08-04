@@ -90,9 +90,9 @@ const useAppStore = create(
       setIsOvmsRunning: (isRunning) => set({ isOvmsRunning: isRunning }),
 
       // Notification actions
-      showNotification: (message, type = "info") =>
+      showNotification: (message, type = "info", timeout = null) =>
         set({
-          notification: { message, type, timestamp: Date.now() },
+          notification: { message, type, timestamp: Date.now(), timeout },
         }),
       clearNotification: () => set({ notification: null }),
     }),

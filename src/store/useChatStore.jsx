@@ -8,6 +8,7 @@ const useChatStore = create(
       chatSessions: {},
       activeChatSessionId: null,
       currentChatMessages: [],
+      temporarySession: null, // For sessions not yet persisted
 
       // Chat session actions
       setChatSessions: (sessions) => set({ chatSessions: sessions }),
@@ -15,6 +16,7 @@ const useChatStore = create(
         set({ activeChatSessionId: sessionId }),
       setCurrentChatMessages: (messages) =>
         set({ currentChatMessages: Array.isArray(messages) ? messages : [] }),
+      setTemporarySession: (session) => set({ temporarySession: session }),
       addChatSession: (session) =>
         set((state) => ({
           chatSessions: { ...state.chatSessions, [session.id]: session },
@@ -43,6 +45,7 @@ const useChatStore = create(
           currentChatMessages: [...(state.currentChatMessages || []), message],
         })),
       clearCurrentChatMessages: () => set({ currentChatMessages: [] }),
+      clearTemporarySession: () => set({ temporarySession: null }),
     }),
     {
       name: "sparrow-chat-state",
@@ -56,6 +59,7 @@ const useChatStore = create(
           chatSessions: {},
           activeChatSessionId: null,
           currentChatMessages: [],
+          temporarySession: null,
         };
       },
     }

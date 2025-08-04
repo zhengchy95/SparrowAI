@@ -26,8 +26,12 @@ function App() {
     showNotification,
     setIsOvmsRunning,
   } = useAppStore();
-  const { setActiveChatSessionId, clearCurrentChatMessages, addChatSession } =
-    useChatStore();
+  const {
+    setActiveChatSessionId,
+    clearCurrentChatMessages,
+    clearTemporarySession,
+    setTemporarySession,
+  } = useChatStore();
 
   // Create theme based on current mode
   const theme = createAppTheme(themeMode);
@@ -39,17 +43,30 @@ function App() {
   useEffect(() => {
     const createNewChatOnStartup = async () => {
       try {
-        // Clear any existing session state first
-        setActiveChatSessionId(null);
+        console.log("App.jsx: Starting new chat session creation");
+
+        // Clear any existing state first
+        clearTemporarySession();
         clearCurrentChatMessages();
 
+        // Small delay to ensure state is cleared
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
         // Create a new chat session
-        const newSession = await invoke("create_chat_session", {
+        const newSession = await invoke("create_temporary_chat_session", {
           title: "New Chat",
         });
-        addChatSession(newSession);
+
+        console.log("App.jsx: Created temporary session:", newSession);
+
+        // Set this as the temporary session (not saved to storage yet)
+        setTemporarySession(newSession);
         setActiveChatSessionId(newSession.id);
-        console.log("Created new chat session on startup:", newSession.id);
+
+        // Force clear messages again after setting the session
+        clearCurrentChatMessages();
+
+        console.log("App.jsx: Set temporary session with ID:", newSession.id);
       } catch (error) {
         console.error("Failed to create new chat session on startup:", error);
       }
@@ -78,7 +95,7 @@ function App() {
             // OVMS not running, start it
             try {
               console.log("OVMS found but not running, starting server...");
-              showNotification("Starting OVMS server...", "info");
+              showNotification("Starting OVMS server...", "info", 10000);
               await invoke("start_ovms_server");
               console.log("OVMS server started successfully");
               setIsOvmsRunning(true);
