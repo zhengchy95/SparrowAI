@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
   Drawer,
   List,
@@ -13,7 +13,7 @@ import {
   IconButton,
   Tooltip,
   Button,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Search as SearchIcon,
   Settings as SettingsIcon,
@@ -24,18 +24,24 @@ import {
   Menu as MenuIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-} from '@mui/icons-material';
-import { invoke } from '@tauri-apps/api/core';
-import useAppStore from '../store/useAppStore';
+} from "@mui/icons-material";
+import { invoke } from "@tauri-apps/api/core";
+import useAppStore from "../store/useAppStore";
+import useChatStore from "../store/useChatStore";
 
 const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 64;
 
-const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) => {
+const Sidebar = ({
+  currentPage,
+  onPageChange,
+  isCollapsed,
+  onToggleCollapse,
+}) => {
   const theme = useTheme();
-  const { 
-    setSettingsDialogOpen, 
-    downloadedModels,
+  const { setSettingsDialogOpen, downloadedModels, showNotification } =
+    useAppStore();
+  const {
     chatSessions,
     activeChatSessionId,
     setChatSessions,
@@ -43,17 +49,16 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
     addChatSession,
     updateChatSession,
     removeChatSession,
-    showNotification
-  } = useAppStore();
-  
+  } = useChatStore();
+
   const [loadingChatSessions, setLoadingChatSessions] = useState(false);
-  
+
   const drawerWidth = isCollapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
 
   const menuItems = [
     {
-      id: 'models',
-      label: 'Models',
+      id: "models",
+      label: "Models",
       icon: <SearchIcon />,
       badge: downloadedModels.size > 0 ? downloadedModels.size : null,
     },
@@ -63,7 +68,7 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
   useEffect(() => {
     loadChatSessions();
   }, []);
-  
+
   // Refresh sessions when chatSessions object changes
   useEffect(() => {
     // This will trigger a re-render when sessions are updated
@@ -72,17 +77,17 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
   const loadChatSessions = async () => {
     try {
       setLoadingChatSessions(true);
-      const result = await invoke('get_chat_sessions');
+      const result = await invoke("get_chat_sessions");
       setChatSessions(result.sessions || {});
       setActiveChatSessionId(result.active_session_id);
-      
+
       // If no active session exists, create a new chat automatically
       if (!result.active_session_id) {
         await createNewChat();
       }
     } catch (error) {
-      console.error('Failed to load chat sessions:', error);
-      showNotification('Failed to load chat sessions', 'error');
+      console.error("Failed to load chat sessions:", error);
+      showNotification("Failed to load chat sessions", "error");
     } finally {
       setLoadingChatSessions(false);
     }
@@ -90,47 +95,49 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
 
   const createNewChat = async () => {
     try {
-      const newSession = await invoke('create_chat_session', { title: 'New Chat' });
+      const newSession = await invoke("create_chat_session", {
+        title: "New Chat",
+      });
       addChatSession(newSession);
       setActiveChatSessionId(newSession.id);
-      
+
       // Update the chat session in store to trigger sidebar update
       updateChatSession(newSession.id, { title: newSession.title });
-      
-      onPageChange('chat');
-      showNotification('New chat created', 'success');
+
+      onPageChange("chat");
+      showNotification("New chat created", "success");
     } catch (error) {
-      console.error('Failed to create new chat:', error);
-      showNotification('Failed to create new chat', 'error');
+      console.error("Failed to create new chat:", error);
+      showNotification("Failed to create new chat", "error");
     }
   };
 
   const selectChatSession = async (sessionId) => {
     try {
-      await invoke('set_active_chat_session', { sessionId });
+      await invoke("set_active_chat_session", { sessionId });
       setActiveChatSessionId(sessionId);
-      onPageChange('chat');
+      onPageChange("chat");
     } catch (error) {
-      console.error('Failed to select chat session:', error);
-      showNotification('Failed to select chat session', 'error');
+      console.error("Failed to select chat session:", error);
+      showNotification("Failed to select chat session", "error");
     }
   };
 
   const deleteChatSession = async (sessionId, event) => {
     event.stopPropagation();
     try {
-      await invoke('delete_chat_session', { sessionId });
+      await invoke("delete_chat_session", { sessionId });
       removeChatSession(sessionId);
-      
+
       // If we deleted the active session, create a new chat session
       if (sessionId === activeChatSessionId) {
         await createNewChat();
       }
-      
-      showNotification('Chat session deleted', 'success');
+
+      showNotification("Chat session deleted", "success");
     } catch (error) {
-      console.error('Failed to delete chat session:', error);
-      showNotification('Failed to delete chat session', 'error');
+      console.error("Failed to delete chat session:", error);
+      showNotification("Failed to delete chat session", "error");
     }
   };
 
@@ -144,29 +151,29 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
       sx={{
         width: drawerWidth,
         flexShrink: 0,
-        transition: theme.transitions.create('width', {
+        transition: theme.transitions.create("width", {
           easing: theme.transitions.easing.sharp,
           duration: theme.transitions.duration.leavingScreen,
         }),
-        '& .MuiDrawer-paper': {
+        "& .MuiDrawer-paper": {
           width: drawerWidth,
-          boxSizing: 'border-box',
+          boxSizing: "border-box",
           backgroundColor: theme.palette.background.paper,
           borderRight: `1px solid ${theme.palette.divider}`,
-          transition: theme.transitions.create('width', {
+          transition: theme.transitions.create("width", {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
           }),
-          overflowX: 'hidden',
+          overflowX: "hidden",
         },
       }}
     >
       {/* Header */}
-      <Box sx={{ p: 1, textAlign: 'center', position: 'relative', mb: 2 }}>
+      <Box sx={{ p: 1, textAlign: "center", position: "relative", mb: 2 }}>
         <IconButton
           onClick={onToggleCollapse}
           sx={{
-            position: isCollapsed ? 'static' : 'absolute',
+            position: isCollapsed ? "static" : "absolute",
             top: isCollapsed ? 0 : 6,
             left: isCollapsed ? 0 : 8,
             mt: isCollapsed ? 1 : 0,
@@ -175,15 +182,15 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
           {isCollapsed ? <MenuIcon /> : <MenuOpenIcon />}
         </IconButton>
         {!isCollapsed && (
- 
-            <Typography variant="h6" component="h3" fontWeight="bold" color="primary">
-              SparrowAI
-            </Typography>
-            
-  
+          <Typography
+            variant="h6"
+            component="h3"
+            fontWeight="bold"
+            color="primary"
+          >
+            SparrowAI
+          </Typography>
         )}
-        
-        
       </Box>
 
       {/* New Chat Button */}
@@ -196,11 +203,11 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
             onClick={createNewChat}
             sx={{
               borderRadius: 2,
-              borderColor: 'primary.main',
-              color: 'primary.main',
-              '&:hover': {
-                backgroundColor: 'primary.main',
-                color: 'white',
+              borderColor: "primary.main",
+              color: "primary.main",
+              "&:hover": {
+                backgroundColor: "primary.main",
+                color: "white",
               },
             }}
           >
@@ -208,21 +215,21 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
           </Button>
         </Box>
       )}
-      
+
       {isCollapsed && (
         <Box sx={{ px: 1, pb: 2 }}>
           <Tooltip title="New Chat" placement="right" arrow>
             <IconButton
               onClick={createNewChat}
               sx={{
-                width: '100%',
-                color: 'primary.main',
+                width: "100%",
+                color: "primary.main",
                 border: 1,
-                borderColor: 'primary.main',
+                borderColor: "primary.main",
                 borderRadius: 2,
-                '&:hover': {
-                  backgroundColor: 'primary.main',
-                  color: 'white',
+                "&:hover": {
+                  backgroundColor: "primary.main",
+                  color: "white",
                 },
               }}
             >
@@ -236,8 +243,8 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
       <List sx={{ px: 1, py: 0 }}>
         {menuItems.map((item) => (
           <ListItem key={item.id} disablePadding sx={{ mb: 1 }}>
-            <Tooltip 
-              title={isCollapsed ? item.label : ''} 
+            <Tooltip
+              title={isCollapsed ? item.label : ""}
               placement="right"
               arrow
             >
@@ -246,37 +253,37 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
                 onClick={() => onPageChange(item.id)}
                 sx={{
                   borderRadius: 2,
-                  justifyContent: isCollapsed ? 'center' : 'initial',
+                  justifyContent: isCollapsed ? "center" : "initial",
                   px: isCollapsed ? 2 : 2,
-                  '&.Mui-selected': {
+                  "&.Mui-selected": {
                     backgroundColor: theme.palette.primary.main,
-                    color: 'white',
-                    '&:hover': {
+                    color: "white",
+                    "&:hover": {
                       backgroundColor: theme.palette.primary.dark,
                     },
-                    '& .MuiListItemIcon-root': {
-                      color: 'white',
+                    "& .MuiListItemIcon-root": {
+                      color: "white",
                     },
                   },
-                  '&:hover': {
+                  "&:hover": {
                     backgroundColor: theme.palette.action.hover,
                   },
                 }}
               >
-                <ListItemIcon 
-                  sx={{ 
+                <ListItemIcon
+                  sx={{
                     minWidth: 40,
-                    justifyContent: 'center',
+                    justifyContent: "center",
                   }}
                 >
                   {item.icon}
                 </ListItemIcon>
                 {!isCollapsed && (
                   <>
-                    <ListItemText 
+                    <ListItemText
                       primary={item.label}
                       primaryTypographyProps={{
-                        fontSize: '0.95rem',
+                        fontSize: "0.95rem",
                         fontWeight: currentPage === item.id ? 600 : 400,
                       }}
                     />
@@ -284,15 +291,15 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
                       <Box
                         sx={{
                           backgroundColor: theme.palette.error.main,
-                          color: 'white',
-                          borderRadius: '50%',
+                          color: "white",
+                          borderRadius: "50%",
                           minWidth: 20,
                           height: 20,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "0.75rem",
+                          fontWeight: "bold",
                         }}
                       >
                         {item.badge}
@@ -303,19 +310,19 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
                 {isCollapsed && item.badge && (
                   <Box
                     sx={{
-                      position: 'absolute',
+                      position: "absolute",
                       top: 4,
                       right: 4,
                       backgroundColor: theme.palette.error.main,
-                      color: 'white',
-                      borderRadius: '50%',
+                      color: "white",
+                      borderRadius: "50%",
                       minWidth: 16,
                       height: 16,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.7rem',
-                      fontWeight: 'bold',
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.7rem",
+                      fontWeight: "bold",
                     }}
                   >
                     {item.badge}
@@ -337,73 +344,76 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
           </Typography>
         </Box>
       )}
-      
-      <List sx={{ px: 1, py: 0, flexGrow: 1, overflow: 'auto' }}>
-        {Object.values(chatSessions).filter(session => session.messages && session.messages.length > 0).map((session) => (
-          <ListItem key={session.id} disablePadding sx={{ mb: 0.5 }}>
-            <Tooltip 
-              title={isCollapsed ? session.title : ''} 
-              placement="right"
-              arrow
-            >
-              <ListItemButton
-                selected={activeChatSessionId === session.id}
-                onClick={() => selectChatSession(session.id)}
-                sx={{
-                  borderRadius: 2,
-                  justifyContent: isCollapsed ? 'center' : 'initial',
-                  px: isCollapsed ? 2 : 2,
-                  py: 1,
-                  '&.Mui-selected': {
-                    backgroundColor: theme.palette.action.selected,
-                  },
-                  '&:hover': {
-                    backgroundColor: theme.palette.action.hover,
-                    '& .delete-button': {
-                      opacity: 1,
-                    },
-                  },
-                }}
+
+      <List sx={{ px: 1, py: 0, flexGrow: 1, overflow: "auto" }}>
+        {Object.values(chatSessions)
+          .filter((session) => session.messages && session.messages.length > 0)
+          .map((session) => (
+            <ListItem key={session.id} disablePadding sx={{ mb: 0.5 }}>
+              <Tooltip
+                title={isCollapsed ? session.title : ""}
+                placement="right"
+                arrow
               >
-                <ListItemIcon 
-                  sx={{ 
-                    minWidth: 32,
-                    justifyContent: 'center',
+                <ListItemButton
+                  selected={activeChatSessionId === session.id}
+                  onClick={() => selectChatSession(session.id)}
+                  sx={{
+                    borderRadius: 2,
+                    justifyContent: isCollapsed ? "center" : "initial",
+                    px: isCollapsed ? 2 : 2,
+                    py: 1,
+                    "&.Mui-selected": {
+                      backgroundColor: theme.palette.action.selected,
+                    },
+                    "&:hover": {
+                      backgroundColor: theme.palette.action.hover,
+                      "& .delete-button": {
+                        opacity: 1,
+                      },
+                    },
                   }}
                 >
-                  <ChatIcon sx={{ fontSize: 18 }} />
-                </ListItemIcon>
-                {!isCollapsed && (
-                  <>
-                    <ListItemText 
-                      primary={session.title}
-                      primaryTypographyProps={{
-                        fontSize: '0.875rem',
-                        fontWeight: activeChatSessionId === session.id ? 500 : 400,
-                        noWrap: true,
-                      }}
-                    />
-                    <IconButton
-                      size="small"
-                      className="delete-button"
-                      onClick={(e) => deleteChatSession(session.id, e)}
-                      sx={{
-                        opacity: 0,
-                        transition: 'opacity 0.2s',
-                        color: 'text.secondary',
-                        '&:hover': {
-                          color: 'error.main',
-                        },
-                      }}
-                    >
-                      <DeleteIcon sx={{ fontSize: 16 }} />
-                    </IconButton>
-                  </>
-                )}
-              </ListItemButton>
-            </Tooltip>
-          </ListItem>
-        ))}
+                  <ListItemIcon
+                    sx={{
+                      minWidth: 32,
+                      justifyContent: "center",
+                    }}
+                  >
+                    <ChatIcon sx={{ fontSize: 18 }} />
+                  </ListItemIcon>
+                  {!isCollapsed && (
+                    <>
+                      <ListItemText
+                        primary={session.title}
+                        primaryTypographyProps={{
+                          fontSize: "0.875rem",
+                          fontWeight:
+                            activeChatSessionId === session.id ? 500 : 400,
+                          noWrap: true,
+                        }}
+                      />
+                      <IconButton
+                        size="small"
+                        className="delete-button"
+                        onClick={(e) => deleteChatSession(session.id, e)}
+                        sx={{
+                          opacity: 0,
+                          transition: "opacity 0.2s",
+                          color: "text.secondary",
+                          "&:hover": {
+                            color: "error.main",
+                          },
+                        }}
+                      >
+                        <DeleteIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </>
+                  )}
+                </ListItemButton>
+              </Tooltip>
+            </ListItem>
+          ))}
       </List>
 
       <Box sx={{ flexGrow: 1 }} />
@@ -412,8 +422,8 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
 
       <List sx={{ px: 1, py: 2 }}>
         <ListItem disablePadding>
-          <Tooltip 
-            title={isCollapsed ? 'Settings' : ''} 
+          <Tooltip
+            title={isCollapsed ? "Settings" : ""}
             placement="right"
             arrow
           >
@@ -421,21 +431,21 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
               onClick={handleSettingsClick}
               sx={{
                 borderRadius: 2,
-                justifyContent: isCollapsed ? 'center' : 'initial',
+                justifyContent: isCollapsed ? "center" : "initial",
                 px: isCollapsed ? 2 : 2,
-                '&:hover': {
+                "&:hover": {
                   backgroundColor: theme.palette.action.hover,
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 40, justifyContent: 'center' }}>
+              <ListItemIcon sx={{ minWidth: 40, justifyContent: "center" }}>
                 <SettingsIcon />
               </ListItemIcon>
               {!isCollapsed && (
-                <ListItemText 
+                <ListItemText
                   primary="Settings"
                   primaryTypographyProps={{
-                    fontSize: '0.95rem',
+                    fontSize: "0.95rem",
                   }}
                 />
               )}
@@ -444,29 +454,25 @@ const Sidebar = ({ currentPage, onPageChange, isCollapsed, onToggleCollapse }) =
         </ListItem>
 
         <ListItem disablePadding sx={{ mt: 1 }}>
-          <Tooltip 
-            title={isCollapsed ? 'About' : ''} 
-            placement="right"
-            arrow
-          >
+          <Tooltip title={isCollapsed ? "About" : ""} placement="right" arrow>
             <ListItemButton
               sx={{
                 borderRadius: 2,
-                justifyContent: isCollapsed ? 'center' : 'initial',
+                justifyContent: isCollapsed ? "center" : "initial",
                 px: isCollapsed ? 2 : 2,
-                '&:hover': {
+                "&:hover": {
                   backgroundColor: theme.palette.action.hover,
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 40, justifyContent: 'center' }}>
+              <ListItemIcon sx={{ minWidth: 40, justifyContent: "center" }}>
                 <InfoIcon />
               </ListItemIcon>
               {!isCollapsed && (
-                <ListItemText 
+                <ListItemText
                   primary="About"
                   primaryTypographyProps={{
-                    fontSize: '0.95rem',
+                    fontSize: "0.95rem",
                   }}
                 />
               )}

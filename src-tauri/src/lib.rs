@@ -365,8 +365,8 @@ pub fn run() {
                 get_default_download_path,
                 ovms::download_ovms,
                 ovms::check_ovms_present,
+                ovms::start_ovms_server,
                 ovms::run_ovms,
-                ovms::stop_ovms,
                 ovms::chat_with_ovms,
                 ovms::create_ovms_config,
                 ovms::update_ovms_config,
@@ -396,18 +396,6 @@ pub fn run() {
                 chat_sessions::get_conversation_history
             ]
         )
-        .setup(|app| {
-            let app_handle = app.handle().clone();
-            // Start OVMS server on app startup
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = ovms::start_ovms_server(&app_handle).await {
-                    eprintln!("Failed to start OVMS server: {}", e);
-                } else {
-                    println!("OVMS server started successfully on app startup");
-                }
-            });
-            Ok(())
-        })
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // Stop OVMS server when app is closing

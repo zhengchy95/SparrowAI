@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -18,7 +18,7 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Delete as DeleteIcon,
   Folder as FolderIcon,
@@ -27,18 +27,18 @@ import {
   Settings as SettingsIcon,
   CheckCircle as LoadedIcon,
   RadioButtonUnchecked as NotLoadedIcon,
-} from '@mui/icons-material';
-import SearchBar from './SearchBar';
-import ModelList from './ModelList';
-import ModelDetails from './ModelDetails';
-import OvmsStatusDialog from './OvmsStatusDialog';
-import useAppStore from '../store/useAppStore';
-import { invoke } from '@tauri-apps/api/core';
+} from "@mui/icons-material";
+import SearchBar from "./SearchBar";
+import ModelList from "./ModelList";
+import ModelDetails from "./ModelDetails";
+import OvmsStatusDialog from "./OvmsStatusDialog";
+import useAppStore from "../store/useAppStore";
+import { invoke } from "@tauri-apps/api/core";
 
 const DownloadedModelCard = ({ modelId, loadedModelId }) => {
   const { removeDownloadedModel, showNotification } = useAppStore();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  
+
   const isLoaded = loadedModelId === modelId;
 
   const handleDeleteClick = () => {
@@ -47,19 +47,19 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
 
   const handleDeleteConfirm = async () => {
     setDeleteDialogOpen(false);
-    
+
     try {
       // Always use default path (no custom download location)
-      const result = await invoke('delete_downloaded_model', {
+      const result = await invoke("delete_downloaded_model", {
         modelId: modelId,
         downloadPath: null, // Use default path
       });
-      
+
       removeDownloadedModel(modelId);
-      showNotification(result, 'success');
+      showNotification(result, "success");
     } catch (error) {
-      console.error('Delete failed:', error);
-      showNotification(`Failed to delete model: ${error}`, 'error');
+      console.error("Delete failed:", error);
+      showNotification(`Failed to delete model: ${error}`, "error");
     }
   };
 
@@ -70,71 +70,71 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
   const handleOpenFolder = async () => {
     try {
       // Always use default path (no custom download location)
-      const result = await invoke('open_model_folder', {
+      const result = await invoke("open_model_folder", {
         modelId: modelId,
         downloadPath: null, // Use default path
       });
-      
-      showNotification(result, 'success');
+
+      showNotification(result, "success");
     } catch (error) {
-      console.error('Failed to open folder:', error);
-      showNotification(`Failed to open folder: ${error}`, 'error');
+      console.error("Failed to open folder:", error);
+      showNotification(`Failed to open folder: ${error}`, "error");
     }
   };
 
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+          }}
+        >
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" component="h2" gutterBottom>
-              {modelId.includes('/') ? modelId.split('/')[1] : modelId}
+              {modelId.includes("/") ? modelId.split("/")[1] : modelId}
             </Typography>
-            {modelId.includes('/') && (
-              <Chip 
-                label={modelId.split('/')[0]} 
-                size="small" 
+            {modelId.includes("/") && (
+              <Chip
+                label={modelId.split("/")[0]}
+                size="small"
                 variant="outlined"
                 sx={{ mb: 1 }}
               />
             )}
           </Box>
-          
-          <Box sx={{ display: 'flex', gap: 1 }}>
+
+          <Box sx={{ display: "flex", gap: 1 }}>
             <Tooltip title={isLoaded ? "Model is loaded" : "Model not loaded"}>
               <IconButton
                 size="small"
-                sx={{ 
-                  color: isLoaded ? 'success.main' : 'text.disabled',
-                  cursor: 'default'
+                sx={{
+                  color: isLoaded ? "success.main" : "text.disabled",
+                  cursor: "default",
                 }}
                 disabled
               >
                 {isLoaded ? <LoadedIcon /> : <NotLoadedIcon />}
               </IconButton>
             </Tooltip>
-            
+
             <Tooltip title="Open Model Folder">
-              <IconButton
-                color="primary"
-                onClick={handleOpenFolder}
-              >
+              <IconButton color="primary" onClick={handleOpenFolder}>
                 <FolderIcon />
               </IconButton>
             </Tooltip>
-            
+
             <Tooltip title="Delete Model">
-              <IconButton
-                color="error"
-                onClick={handleDeleteClick}
-              >
+              <IconButton color="error" onClick={handleDeleteClick}>
                 <DeleteIcon />
               </IconButton>
             </Tooltip>
           </Box>
         </Box>
       </CardContent>
-      
+
       {/* Delete Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
@@ -142,21 +142,24 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
         aria-labelledby="delete-dialog-title"
         aria-describedby="delete-dialog-description"
       >
-        <DialogTitle id="delete-dialog-title">
-          Delete Model
-        </DialogTitle>
+        <DialogTitle id="delete-dialog-title">Delete Model</DialogTitle>
         <DialogContent>
           <DialogContentText id="delete-dialog-description">
             Are you sure you want to delete <strong>{modelId}</strong>?
             <br />
-            This will permanently remove all downloaded files and cannot be undone.
+            This will permanently remove all downloaded files and cannot be
+            undone.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleDeleteCancel} color="primary">
             No, Cancel
           </Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+          <Button
+            onClick={handleDeleteConfirm}
+            color="error"
+            variant="contained"
+          >
             Yes, Delete
           </Button>
         </DialogActions>
@@ -181,10 +184,10 @@ const ModelsPage = () => {
 
   const checkLoadedModel = async () => {
     try {
-      const result = await invoke('get_loaded_model');
+      const result = await invoke("get_loaded_model");
       setLoadedModelId(result);
     } catch (error) {
-      console.error('Failed to get loaded model:', error);
+      console.error("Failed to get loaded model:", error);
       setLoadedModelId(null);
     }
   };
@@ -194,41 +197,29 @@ const ModelsPage = () => {
   };
 
   return (
-    <Box>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Models
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Search, download, and manage your AI models
-      </Typography>
-
-      <Tabs 
-        value={activeTab} 
-        onChange={handleTabChange} 
-        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+    <Box sx={{ width: "100%" }}>
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        sx={{ mb: 3, borderBottom: 1, borderColor: "divider" }}
       >
-        <Tab 
-          icon={<SearchIcon />} 
-          label="Browse Models" 
-          iconPosition="start"
-        />
-        <Tab 
-          icon={<DownloadIcon />} 
+        <Tab icon={<SearchIcon />} label="Browse Models" iconPosition="start" />
+        <Tab
+          icon={<DownloadIcon />}
           label={`Downloaded (${downloadedModelsList.length})`}
           iconPosition="start"
         />
       </Tabs>
 
       {activeTab === 0 && (
-        <Box>
+        <Box sx={{ width: "100%", overflow: "auto" }}>
           <Typography variant="h6" gutterBottom>
             Hugging Face Models
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
             Search and download models from the Hugging Face Hub
           </Typography>
-          
+
           <SearchBar />
           <ModelList />
           <ModelDetails />
@@ -237,7 +228,14 @@ const ModelsPage = () => {
 
       {activeTab === 1 && (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              mb: 2,
+            }}
+          >
             <Box>
               <Typography variant="h6" gutterBottom>
                 Downloaded Models
@@ -257,7 +255,7 @@ const ModelsPage = () => {
           </Box>
 
           {downloadedModelsList.length === 0 ? (
-            <Card sx={{ p: 4, textAlign: 'center' }}>
+            <Card sx={{ p: 4, textAlign: "center" }}>
               <Typography variant="h6" color="text.secondary">
                 No downloaded models found
               </Typography>
@@ -278,7 +276,10 @@ const ModelsPage = () => {
               <Grid container spacing={2}>
                 {downloadedModelsList.map((modelId) => (
                   <Grid size={12} key={modelId}>
-                    <DownloadedModelCard modelId={modelId} loadedModelId={loadedModelId} />
+                    <DownloadedModelCard
+                      modelId={modelId}
+                      loadedModelId={loadedModelId}
+                    />
                   </Grid>
                 ))}
               </Grid>
@@ -288,9 +289,9 @@ const ModelsPage = () => {
       )}
 
       {/* OVMS Status Dialog */}
-      <OvmsStatusDialog 
-        open={ovmsStatusDialogOpen} 
-        onClose={() => setOvmsStatusDialogOpen(false)} 
+      <OvmsStatusDialog
+        open={ovmsStatusDialogOpen}
+        onClose={() => setOvmsStatusDialogOpen(false)}
       />
     </Box>
   );
