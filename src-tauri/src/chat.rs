@@ -2,10 +2,13 @@ use serde::{ Deserialize, Serialize };
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{ Arc, Mutex };
 use uuid::Uuid;
-use openai::chat::{ ChatCompletion, ChatCompletionMessage, ChatCompletionMessageRole };
-use openai::Credentials;
+use async_openai::types::ChatCompletionRequestUserMessageArgs;
+use async_openai::types::ChatCompletionRequestSystemMessageArgs;
+use async_openai::types::ChatCompletionRequestAssistantMessageArgs;
+use async_openai::{ types::CreateChatCompletionRequestArgs, Client };
+use async_openai::{ config::OpenAIConfig };
+use futures::StreamExt;
 use tauri::{ AppHandle, Emitter };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -348,39 +351,34 @@ pub async fn get_conversation_history(session_id: String) -> Result<Vec<ChatMess
 #[tauri::command]
 pub async fn chat_with_loaded_model_streaming(
     app: AppHandle,
+    model_name: String,
     message: String,
     session_id: Option<String>,
     include_history: Option<bool>,
     system_prompt: Option<String>,
     temperature: Option<f64>,
     top_p: Option<f64>,
-    seed: Option<u64>,
+    seed: Option<i64>,
     max_tokens: Option<u32>,
     max_completion_tokens: Option<u32>
 ) -> Result<String, String> {
-    // Check if a model is loaded and get its name
-    let loaded_model_mutex = crate::ovms::LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
-    let model_name = {
-        let loaded_model_guard = loaded_model_mutex.lock().unwrap();
-        if loaded_model_guard.is_none() {
-            return Err("No model is currently loaded. Please load a model first.".to_string());
-        }
-        let model_id = loaded_model_guard.as_ref().unwrap();
-        model_id.split('/').next_back().unwrap_or(model_id).to_string()
-    };
-
-    println!("Chat using streaming model: {}", model_name);
+    let config = OpenAIConfig::new()
+        .with_api_key("unused")
+        .with_api_base("http://localhost:8000/v3");
+    let client = Client::with_config(config);
 
     // Create the messages vector
     let system_message = system_prompt.unwrap_or_else(||
         "You're an AI assistant that provides helpful responses.".to_string()
     );
 
-    let mut messages = vec![ChatCompletionMessage {
-        role: ChatCompletionMessageRole::System,
-        content: Some(system_message),
-        ..Default::default()
-    }];
+    let mut messages = vec![
+        ChatCompletionRequestSystemMessageArgs::default()
+            .content(system_message.clone())
+            .build()
+            .map_err(|e| format!("Failed to build system message: {}", e))?
+            .into()
+    ];
 
     // Include conversation history if requested and session_id is provided
     if include_history.unwrap_or(false) && session_id.is_some() {
@@ -395,20 +393,32 @@ pub async fn chat_with_loaded_model_streaming(
                 }
 
                 for msg in history {
-                    let role = match msg.role.as_str() {
-                        "user" => ChatCompletionMessageRole::User,
-                        "assistant" => ChatCompletionMessageRole::Assistant,
+                    match msg.role.as_str() {
+                        "user" => {
+                            messages.push(
+                                ChatCompletionRequestUserMessageArgs::default()
+                                    .content(msg.content.clone())
+                                    .build()
+                                    .map_err(|e| format!("Failed to build user message: {}", e))?
+                                    .into()
+                            );
+                        }
+                        "assistant" => {
+                            messages.push(
+                                ChatCompletionRequestAssistantMessageArgs::default()
+                                    .content(msg.content.clone())
+                                    .build()
+                                    .map_err(|e|
+                                        format!("Failed to build assistant message: {}", e)
+                                    )?
+                                    .into()
+                            );
+                        }
                         _ => {
                             println!("Skipping unknown role: {}", msg.role);
                             continue;
                         } // Skip unknown roles
                     };
-
-                    messages.push(ChatCompletionMessage {
-                        role,
-                        content: Some(msg.content),
-                        ..Default::default()
-                    });
                 }
             }
             Err(e) => {
@@ -418,52 +428,53 @@ pub async fn chat_with_loaded_model_streaming(
     }
 
     // Always add the current user message
-    messages.push(ChatCompletionMessage {
-        role: ChatCompletionMessageRole::User,
-        content: Some(message.clone()),
-        ..Default::default()
-    });
+    messages.push(
+        ChatCompletionRequestUserMessageArgs::default()
+            .content(message.clone())
+            .build()
+            .map_err(|e| format!("Failed to build user message: {}", e))?
+            .into()
+    );
 
     println!("Sending streaming message: {}", message);
 
-    let credentials = Credentials::new("unused", "http://localhost:8000/v3");
-
     // Create streaming chat completion
-    let mut builder = ChatCompletion::builder(&model_name, messages.clone())
-        .credentials(credentials)
-        .stream(true); // Enable streaming
+    let mut request_builder = CreateChatCompletionRequestArgs::default();
+    request_builder
+        .model(model_name.clone())
+        .messages(messages)
+        .stream(true)
+        .temperature(temperature.unwrap_or(0.7) as f32)
+        .top_p(top_p.unwrap_or(1.0) as f32);
 
-    // Add optional parameters if provided
-    if let Some(temp) = temperature {
-        builder = builder.temperature(temp as f32);
+    // Only set these parameters if they have values
+    if let Some(seed) = seed {
+        request_builder.seed(seed);
     }
 
-    if let Some(top_p_val) = top_p {
-        builder = builder.top_p(top_p_val as f32);
+    if let Some(max_tokens) = max_tokens {
+        request_builder.max_tokens(max_tokens);
     }
 
-    if let Some(seed_val) = seed {
-        builder = builder.seed(seed_val);
+    if let Some(max_completion_tokens) = max_completion_tokens {
+        request_builder.max_completion_tokens(max_completion_tokens);
     }
 
-    if let Some(max_tokens_val) = max_tokens {
-        builder = builder.max_tokens(max_tokens_val);
-    }
+    let request = request_builder
+        .build()
+        .map_err(|e| format!("Failed to build chat request: {}", e))?;
 
-    if let Some(max_completion_tokens_val) = max_completion_tokens {
-        builder = builder.max_completion_tokens(max_completion_tokens_val);
-    }
-
-    let mut chat_stream = builder
-        .create_stream().await
+    let mut stream = client
+        .chat()
+        .create_stream(request).await
         .map_err(|e| format!("Failed to create chat stream: {}", e))?;
 
     let mut full_response = String::new();
 
-    // Process streaming responses using recv() method for Receiver
-    loop {
-        match chat_stream.recv().await {
-            Some(response) => {
+    // Process streaming responses using next() method like the example
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(response) => {
                 let mut should_finish = false;
 
                 if let Some(choice) = response.choices.first() {
@@ -494,8 +505,15 @@ pub async fn chat_with_loaded_model_streaming(
                     break;
                 }
             }
-            None => {
-                // Stream ended
+            Err(err) => {
+                eprintln!("Stream error: {}", err);
+                // Optionally emit error to frontend
+                let _ = app.emit(
+                    "chat-error",
+                    serde_json::json!({
+                        "error": format!("Stream error: {}", err)
+                    })
+                );
                 break;
             }
         }

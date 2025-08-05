@@ -480,6 +480,9 @@ const ChatPage = () => {
 
       // Use streaming chat function
       await invoke("chat_with_loaded_model_streaming", {
+        modelName: selectedModel.startsWith("OpenVINO/")
+          ? selectedModel.substring("OpenVINO/".length)
+          : selectedModel,
         message: messageContent,
         sessionId: sessionToUse,
         includeHistory: settings.includeConversationHistory || false,
