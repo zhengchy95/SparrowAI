@@ -33,7 +33,7 @@ urlencoding = "2.1"
 futures = "0.3"
 # OVMS support
 zip = "0.6"
-openai = "1.1"
+async-openai = { git = "https://github.com/zhengchy95/async-openai", branch = "patch-1" }
 # Chat sessions support
 uuid = { version = "1.0", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
