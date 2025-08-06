@@ -29,7 +29,7 @@
 
 ## 🚀 About SparrowAI
 
-SparrowAI is a modern desktop application that brings powerful AI capabilities directly to your computer. Unlike cloud-based solutions, SparrowAI runs everything locally using Intel's OpenVINO for optimized performance, ensuring your conversations remain completely private.
+SparrowAI is a modern desktop application that brings powerful AI capabilities directly to your computer. Unlike cloud-based solutions, SparrowAI runs everything locally using Intel's OpenVINO Model Server for optimized performance, ensuring your conversations remain completely private.
 
 ### 🎯 Key Highlights
 
