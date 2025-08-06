@@ -35,9 +35,12 @@ const OvmsStatusDialog = ({ open, onClose }) => {
     setOvmsStatus(null);
 
     try {
-      const response = await invoke("check_ovms_status");
-      const statusData = JSON.parse(response);
-      setOvmsStatus(statusData);
+      const ovmsStatusResponse = await invoke("check_ovms_status");
+      console.log(
+        "OvmsStatusDialog: OVMS status response:",
+        ovmsStatusResponse
+      );
+      setOvmsStatus(ovmsStatusResponse);
     } catch (error) {
       console.error("OvmsStatusDialog: Failed to check OVMS status:", error);
       setStatusError(error.toString());
@@ -126,15 +129,21 @@ const OvmsStatusDialog = ({ open, onClose }) => {
               </Typography>
               <Box sx={{ mt: 1 }}>
                 <Typography variant="body2" gutterBottom>
-                  <strong>Loaded Models:</strong>
+                  <strong>Status:</strong> {ovmsStatus.status}
                 </Typography>
-                {Object.keys(ovmsStatus).length === 0 ? (
+                <Typography variant="body2" gutterBottom>
+                  <strong>
+                    Loaded Models ({ovmsStatus.loaded_models?.length || 0}):
+                  </strong>
+                </Typography>
+                {!ovmsStatus.loaded_models ||
+                ovmsStatus.loaded_models.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     No models currently loaded
                   </Typography>
                 ) : (
-                  Object.entries(ovmsStatus).map(([modelName, modelInfo]) => (
-                    <Box key={modelName} sx={{ ml: 2, mb: 1 }}>
+                  ovmsStatus.loaded_models.map((modelName, idx) => (
+                    <Box key={idx} sx={{ ml: 2, mb: 1 }}>
                       <Button
                         variant="text"
                         size="small"
@@ -149,34 +158,13 @@ const OvmsStatusDialog = ({ open, onClose }) => {
                           {modelName}
                         </Typography>
                       </Button>
-                      {modelInfo.model_version_status?.map((version, idx) => (
-                        <Typography
-                          key={idx}
-                          variant="body2"
-                          color={
-                            version.state === "AVAILABLE"
-                              ? "success.main"
-                              : "error.main"
-                          }
-                          sx={{ ml: 1 }}
-                        >
-                          Version {version.version}: {version.state} (
-                          {version.status?.error_message || "OK"})
-                          {version.state !== "AVAILABLE" && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{
-                                display: "block",
-                                ml: 1,
-                                fontStyle: "italic",
-                              }}
-                            >
-                              Click model name for detailed error info
-                            </Typography>
-                          )}
-                        </Typography>
-                      ))}
+                      <Typography
+                        variant="body2"
+                        color="success.main"
+                        sx={{ ml: 1 }}
+                      >
+                        Status: AVAILABLE
+                      </Typography>
                     </Box>
                   ))
                 )}

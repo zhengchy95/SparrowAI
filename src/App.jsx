@@ -24,6 +24,7 @@ import { createAppTheme } from "./Themes";
 
 // Import ChatPage component
 import ChatPage from "./components/ChatPage";
+import DocumentsPage from "./components/DocumentsPage";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("chat");
@@ -95,6 +96,9 @@ function App() {
         if (status.is_complete) {
           setIsOvmsRunning(true);
           showNotification("OVMS initialized successfully", "success");
+          
+          // Emit event to trigger model status refresh in ChatPage
+          window.dispatchEvent(new CustomEvent('ovms-initialization-complete'));
         } else if (status.has_error) {
           setIsOvmsRunning(false);
           showNotification(status.error_message || "OVMS initialization failed", "error");
@@ -122,6 +126,9 @@ function App() {
         showNotification("OVMS initialized successfully", "success");
         // Close dialog after a brief delay to show completion
         setTimeout(() => setShowInitDialog(false), 1000);
+        
+        // Emit event to trigger model status refresh in ChatPage
+        window.dispatchEvent(new CustomEvent('ovms-initialization-complete'));
       } else if (status.has_error) {
         setIsOvmsRunning(false);
         showNotification(status.error_message || "OVMS initialization failed", "error");
@@ -140,6 +147,8 @@ function App() {
         return <ChatPage />;
       case "models":
         return <ModelsPage />;
+      case "documents":
+        return <DocumentsPage />;
       default:
         return <ChatPage />;
     }

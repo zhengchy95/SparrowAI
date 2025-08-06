@@ -36,6 +36,7 @@ import {
   Palette as PaletteIcon,
   Chat as ChatIcon,
   Brightness6 as ThemeIcon,
+  AutoAwesome as RAGIcon,
 } from "@mui/icons-material";
 import useAppStore from "../store/useAppStore";
 import { getAvailableThemeColors } from "../Themes";
@@ -67,6 +68,10 @@ const SettingsDialog = () => {
 
   const handleConversationHistoryChange = (event) => {
     updateSettings({ includeConversationHistory: event.target.checked });
+  };
+
+  const handleRAGToggleChange = (event) => {
+    updateSettings({ useRAG: event.target.checked });
   };
 
   const handleSystemPromptChange = (event) => {
@@ -268,6 +273,28 @@ const SettingsDialog = () => {
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Include previous messages in AI responses for better context
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ alignItems: "flex-start", mb: 2 }}
+                />
+                
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={settings.useRAG || false}
+                      onChange={handleRAGToggleChange}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body1" fontWeight={500} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <RAGIcon sx={{ fontSize: 18 }} />
+                        Use RAG (Retrieval-Augmented Generation)
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Use uploaded documents to enhance AI responses with relevant context
                       </Typography>
                     </Box>
                   }

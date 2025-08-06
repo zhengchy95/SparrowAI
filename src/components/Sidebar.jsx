@@ -25,6 +25,7 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Memory as MemoryIcon,
+  Description as DocumentIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
 import useAppStore from "../store/useAppStore";
@@ -67,6 +68,12 @@ const Sidebar = ({
       label: "Models",
       icon: <SearchIcon />,
       badge: downloadedModels.size > 0 ? downloadedModels.size : null,
+    },
+    {
+      id: "documents",
+      label: "Documents",
+      icon: <DocumentIcon />,
+      badge: null,
     },
   ];
 
@@ -330,7 +337,10 @@ const Sidebar = ({
             >
               <ListItemButton
                 selected={activeChatSessionId === temporarySession.id}
-                onClick={() => setActiveChatSessionId(temporarySession.id)}
+                onClick={() => {
+                  setActiveChatSessionId(temporarySession.id);
+                  onPageChange("chat");
+                }}
                 sx={{
                   borderRadius: 2,
                   justifyContent: isCollapsed ? "center" : "initial",

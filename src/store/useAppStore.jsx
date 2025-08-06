@@ -22,6 +22,7 @@ const useAppStore = create(
         seed: null,
         maxTokens: null,
         maxCompletionTokens: null,
+        useRAG: false, // Default RAG setting
       },
       settingsDialogOpen: false,
       sidebarCollapsed: false,
