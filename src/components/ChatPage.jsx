@@ -10,22 +10,11 @@ import {
   List,
   ListItem,
   Avatar,
-  Chip,
-  IconButton,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
-  Alert,
   CircularProgress,
-  Tooltip,
-  Switch,
-  FormControlLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  LinearProgress,
 } from "@mui/material";
 import {
   Send as SendIcon,
@@ -34,10 +23,6 @@ import {
   Memory as LoadIcon,
   Stop as StopIcon,
   Info as InfoIcon,
-  UploadFile as UploadFileIcon,
-  AttachFile as AttachFileIcon,
-  Description as DocumentIcon,
-  Delete as DeleteIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -80,24 +65,68 @@ const ChatPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  
-  // RAG-related state
-  const [useRAG, setUseRAG] = useState(false);
-  const [ragDocuments, setRagDocuments] = useState([]);
-  const [uploadingDocument, setUploadingDocument] = useState(false);
-  const [showDocumentDialog, setShowDocumentDialog] = useState(false);
-  const [documentCount, setDocumentCount] = useState(0);
-  
+
+  // RAG setting from store
+  const useRAG = settings.useRAG || false;
+
   const messagesEndRef = useRef(null);
   const unlistenRef = useRef(null);
 
   useEffect(() => {
     const initialize = async () => {
-      await initializePage();
       await setupEventListeners();
     };
 
     initialize();
+
+    // Listen for OVMS initialization completion
+    const handleOvmsInitComplete = async () => {
+      console.log("OVMS initialization completed, refreshing model status...");
+      // Wait a moment for OVMS to fully load models
+      setTimeout(async () => {
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const ovmsStatus = await invoke("check_ovms_status");
+          console.log("Post-init OVMS Status received:", ovmsStatus);
+
+          if (
+            ovmsStatus &&
+            ovmsStatus.loaded_models &&
+            ovmsStatus.loaded_models.length > 0
+          ) {
+            const models = ovmsStatus.loaded_models.map((modelName) => ({
+              model_id: `OpenVINO/${modelName}`,
+              device: { oem: "OpenVINO" },
+            }));
+
+            setLoadedModels(models);
+
+            // Pre-select the first loaded model that's also downloaded
+            const modelToSelect = models.find((model) =>
+              downloadedModels.has(model.model_id)
+            );
+
+            if (modelToSelect) {
+              console.log(
+                "Post-init pre-selecting model:",
+                modelToSelect.model_id
+              );
+              setSelectedModel(modelToSelect.model_id);
+            }
+          }
+        } catch (error) {
+          console.error(
+            "Failed to refresh OVMS status after initialization:",
+            error
+          );
+        }
+      }, 2000); // Wait 2 seconds for models to fully load
+    };
+
+    window.addEventListener(
+      "ovms-initialization-complete",
+      handleOvmsInitComplete
+    );
 
     return () => {
       if (globalUnlisten) {
@@ -105,8 +134,12 @@ const ChatPage = () => {
         globalUnlisten = null;
         globalListenerId = null;
       }
+      window.removeEventListener(
+        "ovms-initialization-complete",
+        handleOvmsInitComplete
+      );
     };
-  }, []);
+  }, [downloadedModels]);
 
   // Load messages when active chat session changes
   useEffect(() => {
@@ -141,139 +174,6 @@ const ChatPage = () => {
       console.error("ChatPage: Failed to load chat session messages:", error);
       showNotification("Failed to load chat messages", "error");
       setCurrentChatMessages([]);
-    }
-  };
-
-  const initializePage = async () => {
-    try {
-      setIsLoading(true);
-
-      // Check currently loaded model
-      const loadedModel = await invoke("get_loaded_model");
-      if (loadedModel) {
-        setLoadedModels([
-          { model_id: loadedModel, device: { oem: "OpenVINO" } },
-        ]);
-        setSelectedModel(loadedModel); // Set the dropdown to match loaded model
-      } else {
-        setLoadedModels([]);
-        setSelectedModel("");
-      }
-
-      // Load document count for RAG
-      await loadDocumentCount();
-    } catch (error) {
-      console.error("Failed to initialize chat page:", error);
-      showNotification(`Failed to initialize: ${error}`, "error");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // RAG-related functions
-  const loadDocumentCount = async () => {
-    try {
-      const count = await invoke("get_document_count");
-      setDocumentCount(count);
-    } catch (error) {
-      console.error("Failed to load document count:", error);
-    }
-  };
-
-  const handleDocumentUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const supportedTypes = [
-      'application/pdf', 
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel'
-    ];
-    
-    if (!supportedTypes.includes(file.type)) {
-      showNotification("Unsupported file type. Please upload PDF, DOCX, or XLSX files.", "error");
-      return;
-    }
-
-    if (file.size > 50 * 1024 * 1024) { // 50MB limit
-      showNotification("File size must be less than 50MB", "error");
-      return;
-    }
-
-    try {
-      setUploadingDocument(true);
-      
-      // Save file to temp location
-      const filePath = await invoke("save_temp_file", { 
-        fileName: file.name,
-        fileData: Array.from(new Uint8Array(await file.arrayBuffer()))
-      });
-      
-      // Process document
-      const documents = await invoke("process_document", { filePath });
-      
-      if (!documents || documents.length === 0) {
-        showNotification("No content could be extracted from the document", "warning");
-        return;
-      }
-      
-      // Create embeddings
-      const documentsWithEmbeddings = await invoke("create_document_embeddings", { documents });
-      
-      // Store in vector database
-      await invoke("store_documents", { documents: documentsWithEmbeddings });
-      
-      setRagDocuments(prev => [...prev, ...documentsWithEmbeddings]);
-      await loadDocumentCount(); // Refresh count
-      
-      showNotification(`Document processed: ${documents.length} chunks created`, "success");
-      
-      // Reset file input
-      event.target.value = '';
-      
-    } catch (error) {
-      console.error("Document processing error:", error);
-      showNotification(`Document processing failed: ${error}`, "error");
-    } finally {
-      setUploadingDocument(false);
-    }
-  };
-
-  const loadAllDocuments = async () => {
-    try {
-      const documents = await invoke("get_all_documents");
-      setRagDocuments(documents);
-    } catch (error) {
-      console.error("Failed to load documents:", error);
-      showNotification("Failed to load documents", "error");
-    }
-  };
-
-  const handleDeleteDocument = async (documentId) => {
-    try {
-      const deleted = await invoke("delete_document_by_id", { id: documentId });
-      if (deleted) {
-        setRagDocuments(prev => prev.filter(doc => doc.id !== documentId));
-        await loadDocumentCount();
-        showNotification("Document deleted successfully", "success");
-      }
-    } catch (error) {
-      console.error("Failed to delete document:", error);
-      showNotification("Failed to delete document", "error");
-    }
-  };
-
-  const handleClearAllDocuments = async () => {
-    try {
-      await invoke("clear_all_documents");
-      setRagDocuments([]);
-      setDocumentCount(0);
-      showNotification("All documents cleared successfully", "success");
-      setShowDocumentDialog(false);
-    } catch (error) {
-      console.error("Failed to clear documents:", error);
-      showNotification("Failed to clear documents", "error");
     }
   };
 
@@ -484,32 +384,88 @@ const ChatPage = () => {
       setIsLoadingModel(true);
       setSelectedModel(newModelId);
 
-      // If a model is currently loaded, unload it first
-      if (loadedModels.length > 0) {
-        await invoke("unload_model");
-        setLoadedModels([]);
-      }
-
-      // Load the new model
-      const result = await invoke("load_model", {
-        modelId: newModelId,
-      });
-
-      showNotification(
-        `Model loaded: ${
-          newModelId.includes("/") ? newModelId.split("/")[1] : newModelId
-        }`,
-        "success"
+      // Check if the new model is already loaded (from OVMS status)
+      const isModelAlreadyLoaded = loadedModels.some(
+        (model) => model.model_id === newModelId
       );
 
-      // Refresh loaded models list
-      const loadedModel = await invoke("get_loaded_model");
-      if (loadedModel) {
-        setLoadedModels([
-          { model_id: loadedModel, device: { oem: "OpenVINO" } },
-        ]);
+      if (isModelAlreadyLoaded) {
+        console.log("Model is already loaded in OVMS, no need to load again");
+        showNotification(
+          `Model already loaded: ${
+            newModelId.includes("/") ? newModelId.split("/")[1] : newModelId
+          }`,
+          "success"
+        );
       } else {
-        setLoadedModels([]);
+        // If a different model is currently loaded, try to unload it first
+        if (loadedModels.length > 0) {
+          try {
+            await invoke("unload_model");
+            setLoadedModels([]);
+          } catch (unloadError) {
+            // If unload fails, it might be because the old tracking system doesn't know about the model
+            // Just continue with loading the new model
+            console.log(
+              "Unload failed (model might be tracked by OVMS only):",
+              unloadError
+            );
+          }
+        }
+
+        // Build the model path manually to avoid canonical path issues
+        const modelName = newModelId.includes("/")
+          ? newModelId.split("/")[1]
+          : newModelId;
+
+        // Get user profile directory and build clean path
+        const userProfile = await invoke("get_user_profile_dir");
+        const model_path =
+          `${userProfile}/.sparrow/models/${newModelId}`.replace(/\\/g, "/");
+
+        // Update OVMS config with the new model
+        await invoke("update_ovms_config", {
+          modelName: modelName,
+          modelPath: model_path,
+        });
+
+        // Reload OVMS config
+        await invoke("reload_ovms_config");
+
+        showNotification(
+          `Model loaded: ${
+            newModelId.includes("/") ? newModelId.split("/")[1] : newModelId
+          }`,
+          "success"
+        );
+      }
+
+      // Refresh loaded models list using OVMS status
+      try {
+        const ovmsStatus = await invoke("check_ovms_status");
+        if (
+          ovmsStatus &&
+          ovmsStatus.loaded_models &&
+          ovmsStatus.loaded_models.length > 0
+        ) {
+          const models = ovmsStatus.loaded_models.map((modelName) => ({
+            model_id: `OpenVINO/${modelName}`,
+            device: { oem: "OpenVINO" },
+          }));
+          setLoadedModels(models);
+        } else {
+          setLoadedModels([]);
+        }
+      } catch (ovmsError) {
+        // Fallback to old method
+        const loadedModel = await invoke("get_loaded_model");
+        if (loadedModel) {
+          setLoadedModels([
+            { model_id: loadedModel, device: { oem: "OpenVINO" } },
+          ]);
+        } else {
+          setLoadedModels([]);
+        }
       }
     } catch (error) {
       console.error("Failed to load model:", error);
@@ -608,7 +564,9 @@ const ChatPage = () => {
       globalStreamingStartTime = null;
 
       // Use RAG-enabled or regular streaming chat function
-      const chatFunction = useRAG ? "chat_with_rag_streaming" : "chat_with_loaded_model_streaming";
+      const chatFunction = useRAG
+        ? "chat_with_rag_streaming"
+        : "chat_with_loaded_model_streaming";
       const chatParams = {
         modelName: selectedModel.startsWith("OpenVINO/")
           ? selectedModel.substring("OpenVINO/".length)
@@ -809,54 +767,6 @@ const ChatPage = () => {
           flexShrink: 0,
         }}
       >
-        {/* RAG Controls */}
-        <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={useRAG}
-                onChange={(e) => setUseRAG(e.target.checked)}
-                disabled={documentCount === 0}
-              />
-            }
-            label={`Use RAG ${documentCount > 0 ? `(${documentCount} docs)` : '(no docs)'}`}
-          />
-          
-          <input
-            type="file"
-            accept=".pdf,.docx,.xlsx,.xls"
-            onChange={handleDocumentUpload}
-            style={{ display: 'none' }}
-            id="document-upload"
-            multiple={false}
-          />
-          <label htmlFor="document-upload">
-            <Button
-              variant="outlined"
-              component="span"
-              disabled={uploadingDocument}
-              startIcon={uploadingDocument ? <CircularProgress size={20} /> : <UploadFileIcon />}
-              size="small"
-            >
-              {uploadingDocument ? "Processing..." : "Upload Document"}
-            </Button>
-          </label>
-          
-          {documentCount > 0 && (
-            <Button
-              variant="text"
-              size="small"
-              startIcon={<DocumentIcon />}
-              onClick={() => {
-                setShowDocumentDialog(true);
-                loadAllDocuments();
-              }}
-            >
-              Manage Documents
-            </Button>
-          )}
-        </Box>
-
         {/* First Row: Full Width Input Field */}
         <Box sx={{ mb: 2 }}>
           <TextField
@@ -926,9 +836,10 @@ const ChatPage = () => {
               disabled={isLoadingModel || !isOvmsRunning}
             >
               {downloadedModelsList
-                .filter((modelId) => 
-                  !modelId.includes("bge-reranker-base-int8-ov") &&
-                  !modelId.includes("bge-base-en-v1.5-int8-ov")
+                .filter(
+                  (modelId) =>
+                    !modelId.includes("bge-reranker-base-int8-ov") &&
+                    !modelId.includes("bge-base-en-v1.5-int8-ov")
                 )
                 .map((modelId) => (
                   <MenuItem key={modelId} value={modelId}>
@@ -962,87 +873,6 @@ const ChatPage = () => {
           </Button>
         </Box>
       </Paper>
-
-      {/* Document Management Dialog */}
-      <Dialog
-        open={showDocumentDialog}
-        onClose={() => setShowDocumentDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          Manage Documents ({documentCount} total)
-        </DialogTitle>
-        <DialogContent>
-          {ragDocuments.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography color="text.secondary">
-                No documents loaded. Upload documents to enable RAG.
-              </Typography>
-            </Box>
-          ) : (
-            <List>
-              {ragDocuments.slice(0, 20).map((doc) => ( // Show first 20 documents
-                <ListItem
-                  key={doc.id}
-                  sx={{
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    mb: 1,
-                  }}
-                  secondaryAction={
-                    <IconButton
-                      edge="end"
-                      aria-label="delete"
-                      onClick={() => handleDeleteDocument(doc.id)}
-                      color="error"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  }
-                >
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                      {doc.title}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      Type: {doc.file_type.toUpperCase()} • 
-                      {doc.chunk_index !== null && ` Chunk ${doc.chunk_index + 1} • `}
-                      {new Date(doc.created_at).toLocaleDateString()}
-                    </Typography>
-                    <Typography variant="body2" sx={{ 
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}>
-                      {doc.content.substring(0, 200)}...
-                    </Typography>
-                  </Box>
-                </ListItem>
-              ))}
-              {ragDocuments.length > 20 && (
-                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
-                  Showing first 20 documents out of {ragDocuments.length}
-                </Typography>
-              )}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={handleClearAllDocuments}
-            color="error"
-            disabled={documentCount === 0}
-          >
-            Clear All
-          </Button>
-          <Button onClick={() => setShowDocumentDialog(false)}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

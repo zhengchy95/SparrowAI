@@ -5,7 +5,35 @@ use std::process::{ Command, Stdio, Child };
 use std::sync::{ Arc, Mutex };
 use zip::ZipArchive;
 use serde_json::{ json, Value };
+use serde::{ Deserialize, Serialize };
 use tauri::AppHandle;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OvmsStatus {
+    pub status: String,
+    pub loaded_models: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct ModelVersionStatus {
+    version: String,
+    state: String,
+    status: ModelStatus,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct ModelStatus {
+    error_code: String,
+    error_message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct ModelInfo {
+    model_version_status: Vec<ModelVersionStatus>,
+}
 
 const OVMS_DOWNLOAD_URL: &str =
     "https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_windows_python_off.zip";
@@ -40,6 +68,7 @@ pub fn get_ovms_exe_path(app_handle: Option<&AppHandle>) -> PathBuf {
     get_ovms_dir(app_handle).join("ovms.exe")
 }
 
+#[allow(dead_code)]
 pub fn create_minimal_test_config(config_path: &PathBuf) -> Result<(), String> {
     // Create parent directories if they don't exist
     if let Some(parent) = config_path.parent() {
@@ -437,12 +466,13 @@ pub async fn update_ovms_config(
         .join("bge-base-en-v1.5-int8-ov");
 
     if let Some(model_list) = config["mediapipe_config_list"].as_array_mut() {
-        // Check which BGE models already exist and target model
+        // Check which BGE models already exist and find the third model index
         let mut has_bge_reranker = false;
         let mut has_bge_base = false;
+        let mut third_model_index = None;
         let mut found_target_model = false;
 
-        for model in model_list.iter_mut() {
+        for (index, model) in model_list.iter_mut().enumerate() {
             if let Some(name) = model["name"].as_str() {
                 if name == "bge-reranker-base-int8-ov" {
                     has_bge_reranker = true;
@@ -455,8 +485,14 @@ pub async fn update_ovms_config(
                     // Update the path in case it changed
                     model["base_path"] = json!(bge_base_path.to_string_lossy().replace('\\', "/"));
                 } else if name == model_name {
+                    // Target model already exists, just update its path
                     model["base_path"] = json!(normalized_model_path);
                     found_target_model = true;
+                } else {
+                    // This is a third model (not BGE models)
+                    if third_model_index.is_none() {
+                        third_model_index = Some(index);
+                    }
                 }
             }
         }
@@ -483,18 +519,25 @@ pub async fn update_ovms_config(
             );
         }
 
-        // Add the target model if not found and it's not one of the BGE models
+        // Handle the third model if the target model is not one of the BGE models
         if
             !found_target_model &&
             model_name != "bge-reranker-base-int8-ov" &&
             model_name != "bge-base-en-v1.5-int8-ov"
         {
-            model_list.push(
+            let new_model_config =
                 json!({
                 "name": model_name,
                 "base_path": normalized_model_path
-            })
-            );
+            });
+
+            if let Some(third_index) = third_model_index {
+                // Replace the existing third model
+                model_list[third_index] = new_model_config;
+            } else {
+                // No third model exists, add it
+                model_list.push(new_model_config);
+            }
         }
     }
 
@@ -542,8 +585,8 @@ pub fn is_ovms_present(app_handle: Option<&AppHandle>) -> bool {
 pub async fn start_ovms_server(app_handle: AppHandle) -> Result<String, String> {
     // Check if OVMS is already running
     match check_ovms_status().await {
-        Ok(_) => {
-            println!("OVMS server is already running");
+        Ok(ovms_status) => {
+            println!("OVMS server is already running with models: {:?}", ovms_status.loaded_models);
             return Ok("OVMS server is already running".to_string());
         }
         Err(_) => {
@@ -626,18 +669,6 @@ pub async fn start_ovms_server(app_handle: AppHandle) -> Result<String, String> 
             } // Guard is dropped here
 
             println!("OVMS server started on port 8000.");
-
-            // Verify the server is responding (now the guard is dropped)
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-            match check_ovms_status().await {
-                Ok(status) => {
-                    println!("OVMS server health check: {}", status);
-                }
-                Err(e) => {
-                    eprintln!("OVMS server health check failed: {}", e);
-                    // Don't fail here as the process might still be starting up
-                }
-            }
 
             Ok("OVMS server started successfully.".to_string())
         }
@@ -764,7 +795,7 @@ pub async fn load_model(app_handle: AppHandle, model_id: String) -> Result<Strin
 
 // Unload the currently loaded model
 #[tauri::command]
-pub async fn unload_model(app_handle: AppHandle) -> Result<String, String> {
+pub async fn unload_model(_app_handle: AppHandle) -> Result<String, String> {
     let loaded_model_mutex = LOADED_MODEL.get_or_init(|| Arc::new(Mutex::new(None)));
 
     // Get the model ID and clear it
@@ -795,7 +826,7 @@ pub async fn get_loaded_model() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub async fn check_ovms_status() -> Result<String, String> {
+pub async fn check_ovms_status() -> Result<OvmsStatus, String> {
     let client = reqwest::Client::new();
 
     let response = client
@@ -805,7 +836,54 @@ pub async fn check_ovms_status() -> Result<String, String> {
 
     if response.status().is_success() {
         let body = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
-        Ok(body)
+
+        // Parse the JSON response to extract loaded models
+        let json_value: Value = serde_json
+            ::from_str(&body)
+            .map_err(|e| format!("Failed to parse OVMS response JSON: {}", e))?;
+
+        let mut loaded_models = Vec::new();
+
+        // Extract model names from the JSON structure
+        if let Some(config_obj) = json_value.as_object() {
+            for (key, value) in config_obj {
+                // Skip metadata keys
+                if key.starts_with("_") {
+                    continue;
+                }
+
+                // Skip BGE models (embedding and reranker models)
+                if key.starts_with("bge") {
+                    continue;
+                }
+
+                // Check if this is a model entry with model_version_status
+                if let Some(model_info) = value.as_object() {
+                    if let Some(version_status) = model_info.get("model_version_status") {
+                        if let Some(status_array) = version_status.as_array() {
+                            // Check if any version is AVAILABLE
+                            let has_available = status_array.iter().any(|status| {
+                                if let Some(status_obj) = status.as_object() {
+                                    if let Some(state) = status_obj.get("state") {
+                                        return state.as_str() == Some("AVAILABLE");
+                                    }
+                                }
+                                false
+                            });
+
+                            if has_available {
+                                loaded_models.push(key.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(OvmsStatus {
+            status: "healthy".to_string(),
+            loaded_models,
+        })
     } else {
         Err(format!("OVMS status check failed with status: {}", response.status()))
     }
@@ -887,17 +965,31 @@ pub fn generate_ovms_graph(model_dir: &PathBuf, model_id: &str) -> Result<(), St
                 r#"input_stream: "REQUEST_PAYLOAD:input"
 output_stream: "RESPONSE_PAYLOAD:output"
 node {{
-  name: "RerankExecutor"
-  input_side_packet: "RERANK_NODE_RESOURCES:rerank_servable"
-  calculator: "RerankCalculatorOV"
-  input_stream: "REQUEST_PAYLOAD:input"
-  output_stream: "RESPONSE_PAYLOAD:output"
+  calculator: "OpenVINOModelServerSessionCalculator"
+  output_side_packet: "SESSION:tokenizer"
   node_options: {{
-    [type.googleapis.com / mediapipe.RerankCalculatorOVOptions]: {{
-      models_path: "./",
-      target_device: "GPU"
+    [type.googleapis.com / mediapipe.OpenVINOModelServerSessionCalculatorOptions]: {{
+      servable_name: "tokenizer"
+      servable_version: "1"
     }}
   }}
+}}
+node {{
+  calculator: "OpenVINOModelServerSessionCalculator"
+  output_side_packet: "SESSION:rerank"
+  node_options: {{
+    [type.googleapis.com / mediapipe.OpenVINOModelServerSessionCalculatorOptions]: {{
+      servable_name: "rerank_model"
+      servable_version: "1"
+            }}
+            }}
+            }}
+node {{
+    input_side_packet: "TOKENIZER_SESSION:tokenizer"
+    input_side_packet: "RERANK_SESSION:rerank"
+    calculator: "RerankCalculator"
+    input_stream: "REQUEST_PAYLOAD:input"
+    output_stream: "RESPONSE_PAYLOAD:output"
             }}"#
             )
         } else if model_name == "bge-base-en-v1.5-int8-ov" {
