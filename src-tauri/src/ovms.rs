@@ -341,14 +341,46 @@ pub async fn create_ovms_config(
     model_name: String,
     model_path: String
 ) -> Result<String, String> {
+    // Always include both BGE models as the first entries
+    let home_dir = std::env
+        ::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    let bge_reranker_path = PathBuf::from(&home_dir)
+        .join(".sparrow")
+        .join("models")
+        .join("OpenVINO")
+        .join("bge-reranker-base-int8-ov");
+    let bge_base_path = PathBuf::from(&home_dir)
+        .join(".sparrow")
+        .join("models")
+        .join("OpenVINO")
+        .join("bge-base-en-v1.5-int8-ov");
+
+    let mut mediapipe_configs = vec![
+        json!({
+            "name": "bge-reranker-base-int8-ov",
+            "base_path": bge_reranker_path.to_string_lossy().replace('\\', "/")
+        }),
+        json!({
+            "name": "bge-base-en-v1.5-int8-ov",
+            "base_path": bge_base_path.to_string_lossy().replace('\\', "/")
+        })
+    ];
+
+    // Add the provided model if it's not one of the BGE models
+    if model_name != "bge-reranker-base-int8-ov" && model_name != "bge-base-en-v1.5-int8-ov" {
+        mediapipe_configs.push(
+            json!({
+            "name": model_name,
+            "base_path": model_path.replace('\\', "/")
+        })
+        );
+    }
+
     let config =
         json!({
-        "mediapipe_config_list": [
-            {
-                "name": model_name,
-                "base_path": model_path
-            }
-        ],
+        "mediapipe_config_list": mediapipe_configs,
         "model_config_list": []
     });
 
@@ -388,21 +420,75 @@ pub async fn update_ovms_config(
     // Normalize the model_path to use forward slashes for OVMS
     let normalized_model_path = model_path.replace('\\', "/");
 
-    // Find and update existing model or add new one in mediapipe_config_list
+    // Always ensure both BGE models are present
+    let home_dir = std::env
+        ::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    let bge_reranker_path = PathBuf::from(&home_dir)
+        .join(".sparrow")
+        .join("models")
+        .join("OpenVINO")
+        .join("bge-reranker-base-int8-ov");
+    let bge_base_path = PathBuf::from(&home_dir)
+        .join(".sparrow")
+        .join("models")
+        .join("OpenVINO")
+        .join("bge-base-en-v1.5-int8-ov");
+
     if let Some(model_list) = config["mediapipe_config_list"].as_array_mut() {
-        let mut found = false;
+        // Check which BGE models already exist and target model
+        let mut has_bge_reranker = false;
+        let mut has_bge_base = false;
+        let mut found_target_model = false;
+
         for model in model_list.iter_mut() {
             if let Some(name) = model["name"].as_str() {
-                if name == model_name {
+                if name == "bge-reranker-base-int8-ov" {
+                    has_bge_reranker = true;
+                    // Update the path in case it changed
+                    model["base_path"] = json!(
+                        bge_reranker_path.to_string_lossy().replace('\\', "/")
+                    );
+                } else if name == "bge-base-en-v1.5-int8-ov" {
+                    has_bge_base = true;
+                    // Update the path in case it changed
+                    model["base_path"] = json!(bge_base_path.to_string_lossy().replace('\\', "/"));
+                } else if name == model_name {
                     model["base_path"] = json!(normalized_model_path);
-                    found = true;
-                    break;
+                    found_target_model = true;
                 }
             }
         }
 
-        if !found {
-            // Add new model
+        // Add missing BGE models (always as first entries)
+        let mut insert_index = 0;
+        if !has_bge_reranker {
+            model_list.insert(
+                insert_index,
+                json!({
+                "name": "bge-reranker-base-int8-ov",
+                "base_path": bge_reranker_path.to_string_lossy().replace('\\', "/")
+            })
+            );
+            insert_index += 1;
+        }
+        if !has_bge_base {
+            model_list.insert(
+                insert_index,
+                json!({
+                "name": "bge-base-en-v1.5-int8-ov",
+                "base_path": bge_base_path.to_string_lossy().replace('\\', "/")
+            })
+            );
+        }
+
+        // Add the target model if not found and it's not one of the BGE models
+        if
+            !found_target_model &&
+            model_name != "bge-reranker-base-int8-ov" &&
+            model_name != "bge-base-en-v1.5-int8-ov"
+        {
             model_list.push(
                 json!({
                 "name": model_name,
@@ -468,10 +554,10 @@ pub async fn start_ovms_server(app_handle: AppHandle) -> Result<String, String> 
     let ovms_exe = get_ovms_exe_path(Some(&app_handle));
     let config_path = get_ovms_config_path(Some(&app_handle));
 
-    // Create minimal config if it doesn't exist
-    if !config_path.exists() {
-        create_minimal_test_config(&config_path)?;
-    }
+    // // Create minimal config if it doesn't exist
+    // if !config_path.exists() {
+    //     create_minimal_test_config(&config_path)?;
+    // }
 
     // Validate config
     validate_ovms_config(&config_path)?;
@@ -689,7 +775,7 @@ pub async fn unload_model(app_handle: AppHandle) -> Result<String, String> {
 
     if let Some(model_id) = model_id {
         // Create empty config
-        create_minimal_test_config(&get_ovms_config_path(Some(&app_handle)))?;
+        // create_minimal_test_config(&get_ovms_config_path(Some(&app_handle)))?;
 
         // Reload OVMS config
         reload_ovms_config().await?;
@@ -788,13 +874,6 @@ pub fn generate_ovms_graph(model_dir: &PathBuf, model_id: &str) -> Result<(), St
         return Err("No OpenVINO IR files (.xml) found in model directory".to_string());
     }
 
-    // For LLM models, look for common patterns
-    let main_model_name = xml_files
-        .iter()
-        .find(|name| (name.contains("model") || name.contains("openvino")))
-        .or_else(|| xml_files.first())
-        .ok_or("No suitable model file found")?;
-
     // Check for tokenizer and detokenizer
     let tokenizer_name = xml_files
         .iter()
@@ -803,64 +882,102 @@ pub fn generate_ovms_graph(model_dir: &PathBuf, model_id: &str) -> Result<(), St
 
     // Generate graph.pbtxt content based on model type
     let graph_content = if tokenizer_name.is_some() && detokenizer_name.is_some() {
-        // Full LLM pipeline with tokenizer/detokenizer
-        format!(
-            r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
-output_stream: "HTTP_RESPONSE_PAYLOAD:output"
-
-node: {{
-  name: "LLMExecutor"
-  calculator: "HttpLLMCalculator"
-  input_stream: "LOOPBACK:loopback"
-  input_stream: "HTTP_REQUEST_PAYLOAD:input"
-  input_side_packet: "LLM_NODE_RESOURCES:llm"
-  output_stream: "LOOPBACK:loopback"
-  output_stream: "HTTP_RESPONSE_PAYLOAD:output"
-  input_stream_info: {{
-    tag_index: 'LOOPBACK:0',
-    back_edge: true
-  }}
-  node_options: {{
-      [type.googleapis.com / mediapipe.LLMCalculatorOptions]: {{
-          models_path: "./",
-          plugin_config: '{{}}',
-          enable_prefix_caching: false,
-          cache_size: 2,
-          max_num_seqs: 256,
-          device: "GPU",
-      }}
-  }}
-  input_stream_handler {{
-    input_stream_handler: "SyncSetInputStreamHandler",
-    options {{
-      [mediapipe.SyncSetInputStreamHandlerOptions.ext] {{
-        sync_set {{
-          tag_index: "LOOPBACK:0"
-        }}
-      }}
-    }}
-  }}
-}}
-"#
-        )
-    } else {
-        // Simple model inference graph
-        format!(r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
-output_stream: "HTTP_RESPONSE_PAYLOAD:output"
-
+        if model_name == "bge-reranker-base-int8-ov" {
+            format!(
+                r#"input_stream: "REQUEST_PAYLOAD:input"
+output_stream: "RESPONSE_PAYLOAD:output"
 node {{
-  name: "ModelInference"
-  calculator: "OpenVINOInferenceCalculator"
-  input_stream: "HTTP_REQUEST_PAYLOAD:input"
-  output_stream: "HTTP_RESPONSE_PAYLOAD:output"
+  name: "RerankExecutor"
+  input_side_packet: "RERANK_NODE_RESOURCES:rerank_servable"
+  calculator: "RerankCalculatorOV"
+  input_stream: "REQUEST_PAYLOAD:input"
+  output_stream: "RESPONSE_PAYLOAD:output"
   node_options: {{
-    [type.googleapis.com/mediapipe.OpenVINOInferenceCalculatorOptions]: {{
-      model_path: "./{}.xml"
-      device: "CPU"
+    [type.googleapis.com / mediapipe.RerankCalculatorOVOptions]: {{
+      models_path: "./",
+      target_device: "GPU"
     }}
   }}
-}}
-"#, main_model_name)
+            }}"#
+            )
+        } else if model_name == "bge-base-en-v1.5-int8-ov" {
+            format!(
+                r#"input_stream: "REQUEST_PAYLOAD:input"
+output_stream: "RESPONSE_PAYLOAD:output"
+node {{
+  name: "EmbeddingsExecutor"
+  input_side_packet: "EMBEDDINGS_NODE_RESOURCES:embeddings_servable"
+  calculator: "EmbeddingsCalculatorOV"
+  input_stream: "REQUEST_PAYLOAD:input"
+  output_stream: "RESPONSE_PAYLOAD:output"
+  node_options: {{
+    [type.googleapis.com / mediapipe.EmbeddingsCalculatorOVOptions]: {{
+      models_path: "./",
+      normalize_embeddings: true,
+      target_device: "GPU"
+    }}
+  }}
+            }}"#
+            )
+        } else {
+            format!(
+                r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
+                output_stream: "HTTP_RESPONSE_PAYLOAD:output"
+
+                node: {{
+                name: "LLMExecutor"
+                calculator: "HttpLLMCalculator"
+                input_stream: "LOOPBACK:loopback"
+                input_stream: "HTTP_REQUEST_PAYLOAD:input"
+                input_side_packet: "LLM_NODE_RESOURCES:llm"
+                output_stream: "LOOPBACK:loopback"
+                output_stream: "HTTP_RESPONSE_PAYLOAD:output"
+                input_stream_info: {{
+                    tag_index: 'LOOPBACK:0',
+                    back_edge: true
+                }}
+                node_options: {{
+                    [type.googleapis.com / mediapipe.LLMCalculatorOptions]: {{
+                        models_path: "./",
+                        plugin_config: '{{}}',
+                        enable_prefix_caching: false,
+                        cache_size: 2,
+                        max_num_seqs: 256,
+                        device: "GPU",
+                    }}
+                }}
+                input_stream_handler {{
+                    input_stream_handler: "SyncSetInputStreamHandler",
+                    options {{
+                    [mediapipe.SyncSetInputStreamHandlerOptions.ext] {{
+                        sync_set {{
+                        tag_index: "LOOPBACK:0"
+                        }}
+                    }}
+                    }}
+                }}
+                }}
+            "#
+            )
+        }
+    } else {
+        format!(
+            r#"input_stream: "REQUEST_PAYLOAD:input"
+output_stream: "RESPONSE_PAYLOAD:output"
+node {{
+    name: "LLMExecutor"
+    calculator: "LLMCalculator"
+    input_stream: "REQUEST_PAYLOAD:input"
+    output_stream: "RESPONSE_PAYLOAD:output"
+    input_side_packet: "LLM_NODE_RESOURCES:llm"
+    node_options: {{
+        [type.googleapis.com / mediapipe.LLMCalculatorOptions]: {{
+            models_path: "./",
+            target_device: "GPU"
+        }}
+    }}
+}}"#
+        )
     };
 
     let graph_path = model_dir.join("graph.pbtxt");

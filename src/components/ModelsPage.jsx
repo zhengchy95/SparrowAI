@@ -39,6 +39,9 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const isLoaded = loadedModelId === modelId;
+  const isBgeReranker = modelId.includes("bge-reranker-base-int8-ov");
+  const isBgeBase = modelId.includes("bge-base-en-v1.5-int8-ov");
+  const isSystemModel = isBgeReranker || isBgeBase;
 
   const handleDeleteClick = () => {
     setDeleteDialogOpen(true);
@@ -125,10 +128,16 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Delete Model">
-              <IconButton color="error" onClick={handleDeleteClick}>
-                <DeleteIcon />
-              </IconButton>
+            <Tooltip title={isSystemModel ? "Cannot delete system model" : "Delete Model"}>
+              <span>
+                <IconButton 
+                  color="error" 
+                  onClick={handleDeleteClick}
+                  disabled={isSystemModel}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </span>
             </Tooltip>
           </Box>
         </Box>

@@ -5,6 +5,7 @@ use tauri::Emitter;
 mod huggingface;
 mod ovms;
 mod chat;
+mod rag;
 
 #[tauri::command]
 async fn check_downloaded_models(download_path: Option<String>) -> Result<Vec<String>, String> {
@@ -405,7 +406,22 @@ pub fn run() {
                 chat::set_active_chat_session,
                 chat::add_message_to_session,
                 chat::get_session_messages,
-                chat::get_conversation_history
+                chat::get_conversation_history,
+                chat::chat_with_rag_streaming,
+                rag::documents::process_document,
+                rag::documents::save_temp_file,
+                rag::embeddings::create_document_embeddings,
+                rag::embeddings::create_query_embedding,
+                rag::vector_store::store_documents,
+                rag::vector_store::search_documents,
+                rag::vector_store::get_all_documents,
+                rag::vector_store::delete_document_by_id,
+                rag::vector_store::get_document_count,
+                rag::vector_store::clear_all_documents,
+                rag::reranker::rerank_search_results,
+                rag::reranker::rerank_search_results_simple,
+                rag::search::search_documents_by_query,
+                rag::search::get_search_suggestions
             ]
         )
         .setup(|app| {
@@ -415,6 +431,7 @@ pub fn run() {
             });
             Ok(())
         })
+
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // Stop OVMS server when app is closing
