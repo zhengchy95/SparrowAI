@@ -37,7 +37,7 @@ SparrowAI is a modern desktop application that brings powerful AI capabilities d
 - **⚡ Optimized Performance** - Powered by Intel OpenVINO for maximum efficiency
 - **🧠 RAG Support** - Upload documents for context-aware conversations
 - **🎨 Modern Interface** - Beautiful Material-UI design with dark/light themes
-- **📱 Cross-Platform** - Works seamlessly on Windows, macOS, and Linux
+- **📱 Cross-Platform** - Works seamlessly on Windows
 
 ## ✨ Features
 
@@ -187,7 +187,6 @@ SparrowAI/
 SparrowAI stores all data in your user profile:
 
 - **Windows**: `%USERPROFILE%\.sparrow\`
-- **macOS/Linux**: `~/.sparrow/`
 
 ### Directory Structure
 
