@@ -492,7 +492,7 @@ pub async fn get_all_files() -> Result<Vec<FileInfoSummary>, String> {
 }
 
 #[tauri::command]
-pub async fn get_file_chunks(file_path: String) -> Result<Vec<Document>, String> {
+pub async fn get_file_chunks(#[allow(non_snake_case)] filePath: String) -> Result<Vec<Document>, String> {
     let vector_store = VectorStore::new()?;
     
     let mut chunks = Vec::new();
@@ -507,7 +507,7 @@ pub async fn get_file_chunks(file_path: String) -> Result<Vec<Document>, String>
                 
                 match bincode::deserialize::<Document>(&value) {
                     Ok(document) => {
-                        if document.file_path == file_path {
+                        if document.file_path == filePath {
                             chunks.push(document);
                         }
                     }
@@ -538,9 +538,9 @@ pub async fn get_file_chunks(file_path: String) -> Result<Vec<Document>, String>
 }
 
 #[tauri::command]
-pub async fn delete_file_by_path(file_path: String) -> Result<usize, String> {
+pub async fn delete_file_by_path(#[allow(non_snake_case)] filePath: String) -> Result<usize, String> {
     let vector_store = VectorStore::new()?;
-    vector_store.delete_file(&file_path)
+    vector_store.delete_file(&filePath)
 }
 
 #[cfg(test)]

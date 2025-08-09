@@ -1,6 +1,6 @@
 [package]
-name = "sparrow"
-version = "0.2.0"
+name = "SparrowAI"
+version = "0.3.0"
 description = "A small but Powerful AI Assistant"
 authors = ["you"]
 edition = "2021"

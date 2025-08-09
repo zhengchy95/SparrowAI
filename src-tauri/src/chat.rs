@@ -1,5 +1,5 @@
 use serde::{ Deserialize, Serialize };
-use tracing::{warn, error, debug};
+use tracing::{ warn, error, debug };
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
@@ -50,7 +50,6 @@ impl Default for ChatSessionsStorage {
     }
 }
 
-
 fn get_chat_sessions_path() -> Result<PathBuf, String> {
     let home_dir = std::env
         ::var("USERPROFILE")
@@ -81,9 +80,12 @@ fn load_chat_sessions() -> Result<ChatSessionsStorage, String> {
         ::read_to_string(&path)
         .map_err(|e| format!("Failed to read chat sessions file: {}", e))?;
 
-    let result = serde_json::from_str::<ChatSessionsStorage>(&contents).map_err(|e| format!("Failed to parse chat sessions: {}", e));
+    let result = serde_json
+        ::from_str::<ChatSessionsStorage>(&contents)
+        .map_err(|e| format!("Failed to parse chat sessions: {}", e));
     match &result {
-        Ok(sessions) => debug!(session_count = sessions.sessions.len(), "Chat sessions loaded successfully"),
+        Ok(sessions) =>
+            debug!(session_count = sessions.sessions.len(), "Chat sessions loaded successfully"),
         Err(e) => error!(error = %e, "Failed to load chat sessions"),
     }
     result
@@ -390,27 +392,33 @@ pub async fn chat_with_loaded_model_streaming(
             Vec::new()
         }
     };
-    
+
     let tools_info = if !mcp_tools.is_empty() {
         debug!("Processing MCP tools for system message...");
-        
+
         // Generate tool descriptions in simple text format for the custom template
-        let tool_descs: Vec<String> = mcp_tools.iter().enumerate().map(|(i, tool)| {
-            debug!("Processing tool {}: {}", i, tool.function.name);
-            let params_str = match &tool.function.parameters {
-                Some(params) => serde_json::to_string_pretty(params).unwrap_or_default(),
-                None => "{}".to_string()
-            };
-            
-            format!("{}({}) - {}", 
-                tool.function.name,
-                params_str,
-                tool.function.description.as_ref().unwrap_or(&"".to_string())
-            )
-        }).collect();
-        
+        let tool_descs: Vec<String> = mcp_tools
+            .iter()
+            .enumerate()
+            .map(|(i, tool)| {
+                debug!("Processing tool {}: {}", i, tool.function.name);
+                let params_str = match &tool.function.parameters {
+                    Some(params) => serde_json::to_string_pretty(params).unwrap_or_default(),
+                    None => "{}".to_string(),
+                };
+
+                format!(
+                    "{}({}) - {}",
+                    tool.function.name,
+                    params_str,
+                    tool.function.description.as_ref().unwrap_or(&"".to_string())
+                )
+            })
+            .collect();
+
         let tool_descs_text = tool_descs.join("\n");
-        let formatted_tools = format!(r#"
+        let formatted_tools =
+            format!(r#"
 
 # Tools
 
@@ -443,10 +451,11 @@ For each function call, return a json object with function name and arguments wi
 
         Available tools should be called whenever relevant to provide accurate, up-to-date information.".to_string()
     });
-    
+
     // Always append tools info to system message (whether custom or default)
     let system_message = format!("{}{}", base_system_message, tools_info);
-    
+
+    debug!("Message: {}", system_message);
     // Log what we're including
     debug!("System message length: {} chars", system_message.len());
     debug!("Tools info length: {} chars", tools_info.len());
@@ -601,7 +610,7 @@ For each function call, return a json object with function name and arguments wi
         }
     }
     */
-    
+
     // Tools info is now in system message instead
     debug!("Tools info included in system message instead of request tools array");
 
@@ -618,7 +627,10 @@ For each function call, return a json object with function name and arguments wi
                 if let Some(system_msg) = messages_array.get(0) {
                     if let Some(content) = system_msg.get("content") {
                         if let Some(content_str) = content.as_str() {
-                            if content_str.contains("<tools>") || content_str.contains("Available functions:") {
+                            if
+                                content_str.contains("<tools>") ||
+                                content_str.contains("Available functions:")
+                            {
                                 debug!("Tools info found in system message");
                             } else {
                                 debug!("No tools info found in system message");
@@ -628,7 +640,7 @@ For each function call, return a json object with function name and arguments wi
                 }
             }
         }
-        
+
         // Verify no tools array in request (should be commented out)
         if request_value.get("tools").is_some() {
             warn!("Tools array still present in request!");
@@ -659,7 +671,7 @@ For each function call, return a json object with function name and arguments wi
                     // Handle content and look for <tool_call> XML tags
                     if let Some(content) = &chat_choice.delta.content {
                         full_response.push_str(content);
-                        
+
                         // Emit streaming content to frontend (including XML tags)
                         let _ = app.emit(
                             "chat-token",
@@ -668,21 +680,21 @@ For each function call, return a json object with function name and arguments wi
                                 "finished": false
                             })
                         );
-                        
+
                         // Process any complete tool calls found in the response so far
                         let tool_calls = extract_all_tool_calls_from_xml(&full_response);
-                        
+
                         for (fn_name, fn_args) in tool_calls {
                             // Skip if we already executed this exact tool call
                             let tool_signature = format!("{}:{}", fn_name, fn_args);
                             if executed_tools.contains(&tool_signature) {
                                 continue;
                             }
-                            
+
                             executed_tools.insert(tool_signature);
-                            
+
                             debug!("Found complete tool call: name={}, args={}", fn_name, fn_args);
-                            
+
                             // Parse arguments as JSON for MCP tool call
                             let args_map = match
                                 serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
@@ -693,7 +705,7 @@ For each function call, return a json object with function name and arguments wi
                                     // Remove null values as MCP tools don't handle them well
                                     map.retain(|_k, v| !v.is_null());
                                     Some(map)
-                                },
+                                }
                                 Err(e) => {
                                     let parse_error =
                                         format!("Failed to parse tool arguments: {}", e);
@@ -723,9 +735,10 @@ For each function call, return a json object with function name and arguments wi
                                     );
 
                                     // Add tool response in Qwen-Agent format and emit to frontend
-                                    let tool_response_text = format!("\n<tool_response>\n{}\n</tool_response>", tool_result);
+                                    let tool_response_text =
+                                        format!("\n<tool_response>\n{}\n</tool_response>", tool_result);
                                     full_response.push_str(&tool_response_text);
-                                    
+
                                     // Emit tool response as streaming content (including XML tags)
                                     let _ = app.emit(
                                         "chat-token",
@@ -734,16 +747,17 @@ For each function call, return a json object with function name and arguments wi
                                             "finished": false
                                         })
                                     );
-                                    
+
                                     // Mark that we need to continue the conversation after tool execution
                                     needs_continuation = true;
                                 }
                                 Err(e) => {
                                     let tool_error = format!("Tool call failed: {}", e);
                                     error!("{}", tool_error);
-                                    let error_response_text = format!("\n<tool_response>\nError: {}\n</tool_response>", e);
+                                    let error_response_text =
+                                        format!("\n<tool_response>\nError: {}\n</tool_response>", e);
                                     full_response.push_str(&error_response_text);
-                                    
+
                                     // Emit error response as streaming content (including XML tags)
                                     let _ = app.emit(
                                         "chat-token",
@@ -752,7 +766,7 @@ For each function call, return a json object with function name and arguments wi
                                             "finished": false
                                         })
                                     );
-                                    
+
                                     // Mark that we need to continue the conversation even after tool error
                                     needs_continuation = true;
                                 }
@@ -763,7 +777,7 @@ For each function call, return a json object with function name and arguments wi
                     // Handle finish reason
                     if let Some(_finish_reason) = &chat_choice.finish_reason {
                         debug!("Stream finished with reason: {:?}", _finish_reason);
-                        
+
                         // Check for any remaining incomplete tool calls
                         if has_incomplete_tool_call(&full_response) {
                             warn!("Stream ended with incomplete tool call");
@@ -788,26 +802,28 @@ For each function call, return a json object with function name and arguments wi
     // Continue the conversation if we executed tools and got JSON responses
     if needs_continuation {
         debug!("Checking if continuation is needed after tool execution...");
-        
+
         // Check if the tool responses contain JSON structures that need interpretation
         let should_continue = check_if_continuation_needed(&full_response);
-        
+
         if should_continue {
             debug!("Tool response contains JSON - continuing conversation...");
-            
-            match continue_conversation_after_tools(
-                app.clone(),
-                &client,
-                &system_message,
-                &messages,
-                full_response.clone(),
-                &model_name,
-                temperature,
-                top_p,
-                seed,
-                max_tokens,
-                max_completion_tokens
-            ).await {
+
+            match
+                continue_conversation_after_tools(
+                    app.clone(),
+                    &client,
+                    &system_message,
+                    &messages,
+                    full_response.clone(),
+                    &model_name,
+                    temperature,
+                    top_p,
+                    seed,
+                    max_tokens,
+                    max_completion_tokens
+                ).await
+            {
                 Ok(continued_response) => {
                     if !continued_response.trim().is_empty() {
                         // Append the continued response (streaming is already handled by continue_conversation_after_tools)
@@ -818,7 +834,7 @@ For each function call, return a json object with function name and arguments wi
                     error!("Failed to continue conversation: {}", e);
                     let error_msg = format!("\n\n[Continuation Error: {}]", e);
                     full_response.push_str(&error_msg);
-                    
+
                     let _ = app.emit(
                         "chat-token",
                         serde_json::json!({
@@ -859,7 +875,7 @@ async fn continue_conversation_after_tools(
     max_completion_tokens: Option<u32>
 ) -> Result<String, String> {
     debug!("Continuing conversation after tool execution");
-    
+
     // Build new message list with the assistant's response containing tool calls and results
     let mut continuation_messages = vec![
         ChatCompletionRequestSystemMessageArgs::default()
@@ -868,12 +884,12 @@ async fn continue_conversation_after_tools(
             .map_err(|e| format!("Failed to build system message: {}", e))?
             .into()
     ];
-    
+
     // Add previous conversation messages (excluding system message)
     for msg in previous_messages.iter().skip(1) {
         continuation_messages.push(msg.clone());
     }
-    
+
     // Add the assistant message with tool calls and responses
     continuation_messages.push(
         ChatCompletionRequestAssistantMessageArgs::default()
@@ -882,7 +898,7 @@ async fn continue_conversation_after_tools(
             .map_err(|e| format!("Failed to build assistant message with tools: {}", e))?
             .into()
     );
-    
+
     // Create a new streaming request to continue the conversation
     let mut request_builder = CreateChatCompletionRequestArgs::default();
     request_builder
@@ -923,7 +939,7 @@ async fn continue_conversation_after_tools(
                 for chat_choice in response.choices {
                     if let Some(content) = &chat_choice.delta.content {
                         continued_response.push_str(content);
-                        
+
                         // Emit streaming content for continuation
                         let _ = app.emit(
                             "chat-token",
@@ -933,7 +949,7 @@ async fn continue_conversation_after_tools(
                             })
                         );
                     }
-                    
+
                     if let Some(finish_reason) = &chat_choice.finish_reason {
                         debug!("Continuation finished with reason: {:?}", finish_reason);
                         break;
@@ -947,7 +963,7 @@ async fn continue_conversation_after_tools(
             }
         }
     }
-    
+
     debug!("Continuation response: {}", continued_response);
     Ok(continued_response)
 }
@@ -1052,24 +1068,23 @@ async fn perform_rag_retrieval(query: &str, limit: usize) -> Result<String, Stri
     Ok(context_content)
 }
 
-
 fn extract_all_tool_calls_from_xml(text: &str) -> Vec<(String, String)> {
     let mut tool_calls = Vec::new();
     let mut search_start = 0;
-    
+
     while let Some(start) = text[search_start..].find("<tool_call>") {
         let actual_start = search_start + start;
         if let Some(end) = text[actual_start..].find("</tool_call>") {
             let actual_end = actual_start + end;
             let tool_call_content = &text[actual_start + 11..actual_end]; // 11 is length of "<tool_call>"
-            
+
             // Parse JSON inside the tool_call tags
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(tool_call_content) {
                 if let (Some(name), Some(args)) = (parsed.get("name"), parsed.get("arguments")) {
                     if let (Some(name_str), Some(args_obj)) = (name.as_str(), args.as_object()) {
                         tool_calls.push((
                             name_str.to_string(),
-                            serde_json::to_string(args_obj).unwrap_or_default()
+                            serde_json::to_string(args_obj).unwrap_or_default(),
                         ));
                     }
                 }
@@ -1079,7 +1094,7 @@ fn extract_all_tool_calls_from_xml(text: &str) -> Vec<(String, String)> {
             break;
         }
     }
-    
+
     tool_calls
 }
 
@@ -1093,7 +1108,6 @@ fn has_incomplete_tool_call(text: &str) -> bool {
     false
 }
 
-
 fn check_if_continuation_needed(text: &str) -> bool {
     // Always continue conversation when any tool_response is found, regardless of content
     text.contains("<tool_response>")
@@ -1101,27 +1115,25 @@ fn check_if_continuation_needed(text: &str) -> bool {
 
 fn is_json_like(text: &str) -> bool {
     let trimmed = text.trim();
-    
+
     // Empty or very short strings are not JSON
     if trimmed.len() < 2 {
         return false;
     }
-    
+
     // Handle escaped characters in the text (convert \n to actual newlines and \" to ")
-    let normalized = trimmed
-        .replace("\\n", "\n")
-        .replace("\\\"", "\"");
-    
+    let normalized = trimmed.replace("\\n", "\n").replace("\\\"", "\"");
+
     // Try to parse as JSON to ensure it's actually valid
     if let Ok(_) = serde_json::from_str::<serde_json::Value>(&normalized) {
         return true;
     }
-    
+
     // Also try parsing the original trimmed text in case it's already proper JSON
     if let Ok(_) = serde_json::from_str::<serde_json::Value>(trimmed) {
         return true;
     }
-    
+
     false
 }
 

@@ -160,7 +160,7 @@ const DocumentsPage = () => {
     }
 
     try {
-      const deletedCount = await invoke("delete_file_by_path", { file_path: filePath });
+      const deletedCount = await invoke("delete_file_by_path", { filePath: filePath });
       if (deletedCount > 0) {
         await loadDocuments();
         showNotification(`File deleted successfully (${deletedCount} chunks removed)`, "success");
@@ -192,7 +192,7 @@ const DocumentsPage = () => {
 
   const loadFileChunks = async (filePath) => {
     try {
-      const chunks = await invoke("get_file_chunks", { file_path: filePath });
+      const chunks = await invoke("get_file_chunks", { filePath: filePath });
       setFileChunks(prev => ({ ...prev, [filePath]: chunks }));
     } catch (error) {
       console.error("Failed to load file chunks:", error);
@@ -298,9 +298,9 @@ const DocumentsPage = () => {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <DocumentIcon />
-              Documents ({documentCount})
+              Documents ({files.length})
             </Typography>
-            {documentCount > 0 && (
+            {files.length > 0 && (
               <Button
                 variant="outlined"
                 color="error"
@@ -432,7 +432,7 @@ const DocumentsPage = () => {
         <DialogTitle>Clear All Documents</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            This action cannot be undone. All {documentCount} documents will be permanently removed.
+            This action cannot be undone. All {files.length} documents will be permanently removed.
           </Alert>
           <Typography>
             Are you sure you want to clear all documents? This will remove all uploaded files and their processed chunks from the system.

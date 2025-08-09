@@ -3,6 +3,43 @@
 version = 4
 
 [[package]]
+name = "SparrowAI"
+version = "0.3.0"
+dependencies = [
+ "async-openai",
+ "bincode",
+ "calamine",
+ "chrono",
+ "docx-rs",
+ "futures",
+ "lazy_static",
+ "lopdf 0.32.0",
+ "mime_guess",
+ "nalgebra",
+ "pdf-extract",
+ "reqwest",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "sled",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-http",
+ "tauri-plugin-opener",
+ "tauri-plugin-shell",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "urlencoding",
+ "uuid",
+ "walkdir",
+ "zip",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4863,43 +4900,6 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
-]
-
-[[package]]
-name = "sparrow"
-version = "0.2.0"
-dependencies = [
- "async-openai",
- "bincode",
- "calamine",
- "chrono",
- "docx-rs",
- "futures",
- "lazy_static",
- "lopdf 0.32.0",
- "mime_guess",
- "nalgebra",
- "pdf-extract",
- "reqwest",
- "rmcp",
- "serde",
- "serde_json",
- "sled",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-http",
- "tauri-plugin-opener",
- "tauri-plugin-shell",
- "tokio",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "urlencoding",
- "uuid",
- "walkdir",
- "zip",
 ]
 
 [[package]]
