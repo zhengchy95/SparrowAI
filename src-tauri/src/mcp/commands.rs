@@ -63,9 +63,17 @@ pub async fn get_mcp_servers(app_handle: AppHandle) -> Result<Vec<McpServerInfo>
 #[derive(Serialize, Deserialize)]
 pub struct AddServerRequest {
     pub name: String,
-    pub command: String,
-    pub args: Vec<String>,
+    // Stdio fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
+    
+    // URL-based fields (SSE/HTTP)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 #[tauri::command]
@@ -79,7 +87,11 @@ pub async fn add_mcp_server(
         command: request.command,
         args: request.args,
         env: request.env,
+        url: request.url,
     };
+    
+    // Validate the configuration
+    server_config.validate().map_err(|e| format!("Invalid configuration: {}", e))?;
     
     {
         let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -95,6 +107,50 @@ pub async fn add_mcp_server(
     }
     
     Ok(format!("MCP server '{}' added successfully", request.name))
+}
+
+#[tauri::command]
+pub async fn edit_mcp_server(
+    app_handle: AppHandle,
+    request: AddServerRequest,
+) -> Result<String, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    let server_config = McpServerConfig {
+        command: request.command,
+        args: request.args,
+        env: request.env,
+        url: request.url,
+    };
+    
+    // Validate the configuration
+    server_config.validate().map_err(|e| format!("Invalid configuration: {}", e))?;
+    
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let manager = manager_guard.as_mut().ok_or("Manager not initialized")?;
+        
+        // Check if server exists
+        if manager.get_config().get_server(&request.name).is_none() {
+            return Err(format!("Server '{}' not found", request.name));
+        }
+        
+        // Check if server is currently connected (if so, can't edit)
+        if manager.clients.contains_key(&request.name) {
+            return Err(format!("Cannot edit server '{}' while it is connected. Please disconnect first.", request.name));
+        }
+        
+        // Update the server configuration
+        manager.add_server(request.name.clone(), server_config);
+        
+        // Save config to file
+        let config_path = McpConfig::get_config_path(&app_handle)
+            .map_err(|e| format!("Failed to get config path: {}", e))?;
+        manager.get_config().save_to_file(&config_path)
+            .map_err(|e| format!("Failed to save config: {}", e))?;
+    }
+    
+    Ok(format!("MCP server '{}' updated successfully", request.name))
 }
 
 #[tauri::command]

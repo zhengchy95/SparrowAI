@@ -586,6 +586,7 @@ pub fn run() {
                 rag::search::get_search_suggestions,
                 mcp::get_mcp_servers,
                 mcp::add_mcp_server,
+                mcp::edit_mcp_server,
                 mcp::remove_mcp_server,
                 mcp::connect_mcp_server,
                 mcp::disconnect_mcp_server,

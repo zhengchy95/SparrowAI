@@ -1095,28 +1095,8 @@ fn has_incomplete_tool_call(text: &str) -> bool {
 
 
 fn check_if_continuation_needed(text: &str) -> bool {
-    // Extract all tool_response content and check if any contain JSON
-    let mut search_start = 0;
-    
-    while let Some(start) = text[search_start..].find("<tool_response>") {
-        let actual_start = search_start + start;
-        if let Some(end) = text[actual_start..].find("</tool_response>") {
-            let actual_end = actual_start + end;
-            let tool_response_content = &text[actual_start + 15..actual_end]; // 15 is length of "<tool_response>"
-            
-            // Check if this content looks like JSON (starts with { or [, contains structured data)
-            let trimmed = tool_response_content.trim();
-            if is_json_like(trimmed) {
-                return true;
-            }
-            
-            search_start = actual_end + 16; // 16 is length of "</tool_response>"
-        } else {
-            break;
-        }
-    }
-    
-    false
+    // Always continue conversation when any tool_response is found, regardless of content
+    text.contains("<tool_response>")
 }
 
 fn is_json_like(text: &str) -> bool {

@@ -1,6 +1,6 @@
-use super::config::{McpConfig, McpServerConfig};
+use super::config::{McpConfig, McpServerConfig, TransportType};
 use tracing::{info, warn, debug};
-use rmcp::{ServiceExt, transport::TokioChildProcess, service::RunningService, RoleClient};
+use rmcp::{ServiceExt, transport::{TokioChildProcess, SseClientTransport, StreamableHttpClientTransport}, service::RunningService, RoleClient};
 use rmcp::model::CallToolRequestParam;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -34,26 +34,82 @@ impl McpManager {
         info!(server_name = %name, "Attempting to connect to MCP server");
         let server_config = self.config.get_server(name)
             .ok_or(format!("Server '{}' not found in configuration", name))?;
-            
-        info!(command = %server_config.command, args = ?server_config.args, "Starting MCP server");
-        
-        // Create the command
-        let mut cmd = Command::new(&server_config.command);
-        cmd.args(&server_config.args);
-        cmd.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-            
-        // Set environment variables if provided
-        if let Some(env_vars) = &server_config.env {
-            for (key, value) in env_vars {
-                cmd.env(key, value);
-            }
-        }
-        
-        // Create transport and connect
-        let transport = TokioChildProcess::new(cmd)?;
-        let client = ().serve(transport).await?;
+
+        // Validate configuration
+        server_config.validate().map_err(|e| format!("Invalid server configuration: {}", e))?;
+
+        let transport_type = server_config.get_transport_type();
+        info!(server_name = %name, transport_type = ?transport_type, "Detected transport type");
+
+        let client = match transport_type {
+            TransportType::Stdio => {
+                let command = server_config.command.as_ref().unwrap();
+                let args = server_config.args.as_deref().unwrap_or(&[]);
+                
+                info!(command = %command, args = ?args, "Starting MCP server via stdio");
+                
+                // Create the command - on Windows, we might need to handle .cmd extensions
+                let mut cmd = if cfg!(target_os = "windows") && !command.ends_with(".exe") && !command.ends_with(".cmd") {
+                    // Try to find the command with .cmd extension first
+                    let cmd_with_extension = format!("{}.cmd", command);
+                    let mut test_cmd = Command::new(&cmd_with_extension);
+                    test_cmd.args(&["--version"]);
+                    
+                    match test_cmd.output().await {
+                        Ok(_) => {
+                            info!(original_command = %command, resolved_command = %cmd_with_extension, "Resolved Windows command with .cmd extension");
+                            Command::new(cmd_with_extension)
+                        },
+                        Err(_) => {
+                            info!(command = %command, "Using original command without extension resolution");
+                            Command::new(command)
+                        }
+                    }
+                } else {
+                    Command::new(command)
+                };
+                
+                cmd.args(args);
+                cmd.stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                    
+                // Ensure PATH is inherited from the current environment on Windows
+                if cfg!(target_os = "windows") {
+                    if let Ok(path_var) = std::env::var("PATH") {
+                        cmd.env("PATH", path_var);
+                    }
+                }
+                
+                // Set environment variables if provided
+                if let Some(env_vars) = &server_config.env {
+                    for (key, value) in env_vars {
+                        cmd.env(key, value);
+                    }
+                }
+                
+                // Create transport and connect
+                let transport = TokioChildProcess::new(cmd).map_err(|e| {
+                    warn!(command = %command, args = ?args, error = %e, "Failed to create TokioChildProcess");
+                    format!("Failed to start command '{}': {}", command, e)
+                })?;
+                ().serve(transport).await?
+            },
+            TransportType::Sse => {
+                let url = server_config.url.as_ref().unwrap();
+                info!(url = %url, "Connecting to MCP server via SSE");
+                
+                let transport = SseClientTransport::start(url.clone()).await?;
+                ().serve(transport).await?
+            },
+            TransportType::StreamableHttp => {
+                let url = server_config.url.as_ref().unwrap();
+                info!(url = %url, "Connecting to MCP server via Streamable HTTP");
+                
+                let transport = StreamableHttpClientTransport::from_uri(url.clone());
+                ().serve(transport).await?
+            },
+        };
         
         self.clients.insert(name.to_string(), client);
         info!(server_name = %name, "Successfully connected to MCP server");

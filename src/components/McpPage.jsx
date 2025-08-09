@@ -24,6 +24,7 @@ import {
   PlayArrow as ConnectIcon,
   Stop as DisconnectIcon,
   Refresh as RefreshIcon,
+  Edit as EditIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
 import useAppStore from "../store/useAppStore";
@@ -34,6 +35,8 @@ const McpPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingServer, setEditingServer] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
   const { showNotification } = useAppStore();
 
@@ -131,6 +134,29 @@ const McpPage = () => {
       showNotification(`Failed to add server: ${err}`, "error");
       throw err; // Let the dialog handle the error
     }
+  };
+
+  const handleEditServer = async (serverConfig) => {
+    try {
+      const result = await invoke("edit_mcp_server", { request: serverConfig });
+      showNotification(result, "success");
+      setEditDialogOpen(false);
+      setEditingServer(null);
+      await loadServers(); // Refresh the list
+    } catch (err) {
+      console.error("Failed to edit MCP server:", err);
+      showNotification(`Failed to edit server: ${err}`, "error");
+      throw err; // Let the dialog handle the error
+    }
+  };
+
+  const openEditDialog = (server) => {
+    if (server.status === "connected") {
+      showNotification("Cannot edit a connected server. Please disconnect first.", "warning");
+      return;
+    }
+    setEditingServer(server);
+    setEditDialogOpen(true);
   };
 
   const getStatusColor = (status) => {
@@ -242,7 +268,7 @@ const McpPage = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
-                <TableCell>Command</TableCell>
+                <TableCell>Configuration</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Tools</TableCell>
                 <TableCell>Actions</TableCell>
@@ -257,12 +283,35 @@ const McpPage = () => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {server.config.command}
-                    </Typography>
-                    {server.config.args && server.config.args.length > 0 && (
-                      <Typography variant="caption" display="block">
-                        Args: {server.config.args.join(" ")}
+                    {server.config.command ? (
+                      // Stdio transport
+                      <>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Command:</strong> {server.config.command}
+                        </Typography>
+                        {server.config.args && server.config.args.length > 0 && (
+                          <Typography variant="caption" display="block">
+                            Args: {server.config.args.join(" ")}
+                          </Typography>
+                        )}
+                        <Chip label="stdio" size="small" variant="outlined" sx={{ mt: 0.5 }} />
+                      </>
+                    ) : server.config.url ? (
+                      // URL-based transport (SSE or HTTP)
+                      <>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>URL:</strong> {server.config.url}
+                        </Typography>
+                        <Chip 
+                          label={server.config.url.endsWith('/sse') ? 'SSE' : server.config.url.endsWith('/mcp') ? 'HTTP' : 'URL'}
+                          size="small" 
+                          variant="outlined" 
+                          sx={{ mt: 0.5 }} 
+                        />
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Invalid configuration
                       </Typography>
                     )}
                   </TableCell>
@@ -331,6 +380,15 @@ const McpPage = () => {
                       )}
                       <IconButton
                         size="small"
+                        color="primary"
+                        onClick={() => openEditDialog(server)}
+                        disabled={server.status === "connected"}
+                        title="Edit Server"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        size="small"
                         color="error"
                         onClick={() => handleRemove(server.name)}
                         disabled={actionLoading[server.name] === "removing"}
@@ -356,6 +414,17 @@ const McpPage = () => {
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
         onAdd={handleAddServer}
+      />
+
+      {/* Edit Server Dialog */}
+      <AddMcpServerDialog
+        open={editDialogOpen}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setEditingServer(null);
+        }}
+        onAdd={handleEditServer}
+        editData={editingServer}
       />
     </Box>
   );

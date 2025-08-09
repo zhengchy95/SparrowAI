@@ -5,10 +5,61 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
-    pub command: String,
-    pub args: Vec<String>,
+    // For stdio transport
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
+    
+    // For SSE and HTTP transports
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+impl McpServerConfig {
+    /// Automatically detect transport type based on configuration
+    pub fn get_transport_type(&self) -> TransportType {
+        if let Some(_command) = &self.command {
+            TransportType::Stdio
+        } else if let Some(url) = &self.url {
+            if url.ends_with("/sse") {
+                TransportType::Sse
+            } else if url.ends_with("/mcp") {
+                TransportType::StreamableHttp
+            } else {
+                // Default to SSE for other URLs
+                TransportType::Sse
+            }
+        } else {
+            // If neither command nor url is specified, default to stdio
+            TransportType::Stdio
+        }
+    }
+    
+    pub fn validate(&self) -> Result<(), String> {
+        match self.get_transport_type() {
+            TransportType::Stdio => {
+                if self.command.is_none() {
+                    return Err("Stdio transport requires 'command' field".to_string());
+                }
+            }
+            TransportType::Sse | TransportType::StreamableHttp => {
+                if self.url.is_none() {
+                    return Err("URL-based transport requires 'url' field".to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransportType {
+    Stdio,
+    Sse,
+    StreamableHttp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
