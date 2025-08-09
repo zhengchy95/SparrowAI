@@ -54,3 +54,7 @@ nalgebra = "0.32" # Vector operations
 walkdir = "2.0"
 mime_guess = "2.0"
 
+# MCP integration  
+rmcp = { version = "0.4", features = ["transport-child-process", "client"] }
+lazy_static = "1.4"
+

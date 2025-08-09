@@ -26,6 +26,7 @@ import {
   Delete as DeleteIcon,
   Memory as MemoryIcon,
   Description as DocumentIcon,
+  Extension as McpIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
 import useAppStore from "../store/useAppStore";
@@ -42,7 +43,7 @@ const Sidebar = ({
   onToggleCollapse,
 }) => {
   const theme = useTheme();
-  const { setSettingsDialogOpen, downloadedModels, showNotification } =
+  const { setSettingsDialogOpen, downloadedModels, showNotification, loadedModel, setLoadedModel } =
     useAppStore();
   const {
     chatSessions,
@@ -67,12 +68,18 @@ const Sidebar = ({
       id: "models",
       label: "Models",
       icon: <SearchIcon />,
-      badge: downloadedModels.size > 0 ? downloadedModels.size : null,
+      badge: null,
     },
     {
       id: "documents",
       label: "Documents",
       icon: <DocumentIcon />,
+      badge: null,
+    },
+    {
+      id: "mcp",
+      label: "MCP",
+      icon: <McpIcon />,
       badge: null,
     },
   ];
@@ -111,11 +118,42 @@ const Sidebar = ({
     }
   };
 
+  const getLoadedModel = async () => {
+    try {
+      const ovmsStatus = await invoke("check_ovms_status");
+      if (ovmsStatus && ovmsStatus.loaded_models && ovmsStatus.loaded_models.length > 0) {
+        // Sort models to ensure consistency, then return the first one
+        const sortedModels = ovmsStatus.loaded_models.sort();
+        const modelId = `OpenVINO/${sortedModels[0]}`;
+        
+        // Update global loaded model state
+        setLoadedModel(modelId);
+        
+        return modelId;
+      }
+    } catch (error) {
+      console.error("Failed to get loaded model:", error);
+    }
+    
+    // Clear loaded model state if no models are loaded
+    setLoadedModel(null);
+    return null;
+  };
+
   const createNewChat = async () => {
     try {
+      // Get the currently loaded model to pre-select it
+      const loadedModel = await getLoadedModel();
+      
       const newSession = await invoke("create_temporary_chat_session", {
         title: "New Chat",
       });
+      
+      // If we have a loaded model, set it as the model_id for the session
+      if (loadedModel) {
+        newSession.model_id = loadedModel;
+      }
+      
       clearTemporarySession();
       setTemporarySession(newSession);
       setActiveChatSessionId(newSession.id);
@@ -134,6 +172,26 @@ const Sidebar = ({
       if (temporarySession && temporarySession.id !== sessionId) {
         clearTemporarySession();
       }
+      
+      // If the selected session doesn't have a model_id, try to set a consistent loaded model
+      const session = chatSessions[sessionId];
+      if (session && !session.model_id) {
+        const loadedModel = await getLoadedModel();
+        if (loadedModel) {
+          try {
+            await invoke("update_chat_session", {
+              sessionId: sessionId,
+              title: null, // Don't change the title
+              modelId: loadedModel,
+            });
+            // Update local state
+            updateChatSession({ ...session, model_id: loadedModel });
+          } catch (error) {
+            console.error("Failed to update session with loaded model:", error);
+          }
+        }
+      }
+      
       onPageChange("chat");
     } catch (error) {
       console.error("Sidebar: Failed to select chat session:", error);
@@ -187,14 +245,14 @@ const Sidebar = ({
         },
       }}
     >
-      {/* Header */}
-      <Box sx={{ p: 1, textAlign: "center", position: "relative", mb: 2 }}>
+      {/* Header - More Compact */}
+      <Box sx={{ p: 1, textAlign: "center", position: "relative", mb: 1.5 }}>
         <IconButton
           onClick={onToggleCollapse}
           sx={{
             position: isCollapsed ? "static" : "absolute",
-            top: isCollapsed ? 0 : 12,
-            left: isCollapsed ? 0 : 16,
+            top: isCollapsed ? 0 : 8,
+            left: isCollapsed ? 0 : 12,
             mt: 0,
           }}
         >
@@ -206,25 +264,27 @@ const Sidebar = ({
             component="h3"
             fontWeight="bold"
             color="primary"
-            sx={{ mt: 0.8 }}
+            sx={{ mt: 0.5, fontSize: "1.1rem" }}
           >
             SparrowAI
           </Typography>
         )}
       </Box>
 
-      {/* New Chat Button */}
+      {/* New Chat Button - More Compact */}
       {!isCollapsed && (
-        <Box sx={{ px: 2, pb: 2 }}>
+        <Box sx={{ px: 2, pb: 1.5 }}>
           <Button
             variant="outlined"
             fullWidth
             startIcon={<AddIcon />}
             onClick={createNewChat}
             sx={{
-              borderRadius: 2,
+              borderRadius: 1.5,
               borderColor: "primary.main",
               color: "primary.main",
+              py: 0.75,
+              fontSize: "0.85rem",
               "&:hover": {
                 backgroundColor: "primary.main",
                 color: "white",
@@ -237,7 +297,7 @@ const Sidebar = ({
       )}
 
       {isCollapsed && (
-        <Box sx={{ px: 1, pb: 2 }}>
+        <Box sx={{ px: 1, pb: 1.5 }}>
           <Tooltip title="New Chat" placement="right" arrow>
             <IconButton
               onClick={createNewChat}
@@ -246,7 +306,8 @@ const Sidebar = ({
                 color: "primary.main",
                 border: 1,
                 borderColor: "primary.main",
-                borderRadius: 2,
+                borderRadius: 1.5,
+                py: 0.75,
                 "&:hover": {
                   backgroundColor: "primary.main",
                   color: "white",
@@ -259,10 +320,10 @@ const Sidebar = ({
         </Box>
       )}
 
-      {/* Top Menu Items */}
+      {/* Top Menu Items - More Compact */}
       <List sx={{ px: 1, py: 0 }}>
         {menuItems.map((item) => (
-          <ListItem key={item.id} disablePadding sx={{ mb: 1 }}>
+          <ListItem key={item.id} disablePadding sx={{ mb: 0.5 }}>
             <Tooltip
               title={isCollapsed ? item.label : ""}
               placement="right"
@@ -272,9 +333,11 @@ const Sidebar = ({
                 selected={currentPage === item.id}
                 onClick={() => onPageChange(item.id)}
                 sx={{
-                  borderRadius: 2,
+                  borderRadius: 1.5,
                   justifyContent: isCollapsed ? "center" : "initial",
-                  px: isCollapsed ? 2 : 2,
+                  px: isCollapsed ? 1.5 : 2,
+                  py: 0.75,
+                  minHeight: 40,
                   "&.Mui-selected": {
                     backgroundColor: theme.palette.primary.main,
                     color: "white",
@@ -292,7 +355,7 @@ const Sidebar = ({
               >
                 <ListItemIcon
                   sx={{
-                    minWidth: 40,
+                    minWidth: 32,
                     justifyContent: "center",
                   }}
                 >
@@ -302,12 +365,30 @@ const Sidebar = ({
                   <ListItemText
                     primary={item.label}
                     slotProps={{
-                      typography: {
-                        fontSize: "0.95rem",
+                      primary: {
+                        fontSize: "0.85rem",
                         fontWeight: currentPage === item.id ? 600 : 400,
                       },
                     }}
                   />
+                )}
+                {!isCollapsed && item.badge && (
+                  <Box
+                    sx={{
+                      backgroundColor: theme.palette.primary.main,
+                      color: "white",
+                      borderRadius: "50%",
+                      minWidth: 20,
+                      height: 20,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.7rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {item.badge}
+                  </Box>
                 )}
               </ListItemButton>
             </Tooltip>
@@ -315,12 +396,12 @@ const Sidebar = ({
         ))}
       </List>
 
-      <Divider sx={{ my: 1 }} />
+      <Divider sx={{ my: 0.5 }} />
 
       {/* Chat Sessions List */}
       {!isCollapsed && (
-        <Box sx={{ px: 2, pb: 1 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
+        <Box sx={{ px: 2, pb: 0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ px: 1, fontSize: "0.75rem" }}>
             Recent Chats
           </Typography>
         </Box>
@@ -329,7 +410,7 @@ const Sidebar = ({
       <List sx={{ px: 1, py: 0, flexGrow: 1, overflow: "auto" }}>
         {/* Show temporary session first if it exists */}
         {temporarySession && (
-          <ListItem key={temporarySession.id} disablePadding sx={{ mb: 0.5 }}>
+          <ListItem key={temporarySession.id} disablePadding sx={{ mb: 0.25 }}>
             <Tooltip
               title={isCollapsed ? temporarySession.title : ""}
               placement="right"
@@ -342,10 +423,11 @@ const Sidebar = ({
                   onPageChange("chat");
                 }}
                 sx={{
-                  borderRadius: 2,
+                  borderRadius: 1.5,
                   justifyContent: isCollapsed ? "center" : "initial",
-                  px: 2,
-                  py: 1,
+                  px: 1.5,
+                  py: 0.5,
+                  minHeight: 36,
                   "&.Mui-selected": {
                     backgroundColor: theme.palette.action.selected,
                   },
@@ -356,26 +438,27 @@ const Sidebar = ({
               >
                 <ListItemIcon
                   sx={{
-                    minWidth: 32,
+                    minWidth: 28,
                     justifyContent: "center",
                   }}
                 >
-                  <ChatIcon sx={{ fontSize: 18, opacity: 0.7 }} />
+                  <ChatIcon sx={{ fontSize: 16, opacity: 0.7 }} />
                 </ListItemIcon>
                 {!isCollapsed && (
                   <ListItemText
                     primary={temporarySession.title}
                     slotProps={{
-                      typography: {
-                        fontSize: "0.875rem",
+                      primary: {
+                        fontSize: "0.8rem",
                         fontWeight:
                           activeChatSessionId === temporarySession.id
                             ? 500
                             : 400,
                         noWrap: true,
                         fontStyle: "italic",
+                        lineHeight: 1.2,
+                        opacity: 0.8,
                       },
-                      opacity: 0.8,
                     }}
                   />
                 )}
@@ -389,7 +472,7 @@ const Sidebar = ({
           .filter((session) => session.messages && session.messages.length > 0)
           .sort((a, b) => b.updated_at - a.updated_at) // Sort by updated_at descending (newest first)
           .map((session) => (
-            <ListItem key={session.id} disablePadding sx={{ mb: 0.5 }}>
+            <ListItem key={session.id} disablePadding sx={{ mb: 0.25 }}>
               <Tooltip
                 title={isCollapsed ? session.title : ""}
                 placement="right"
@@ -399,10 +482,11 @@ const Sidebar = ({
                   selected={activeChatSessionId === session.id}
                   onClick={() => selectChatSession(session.id)}
                   sx={{
-                    borderRadius: 2,
+                    borderRadius: 1.5,
                     justifyContent: isCollapsed ? "center" : "initial",
-                    px: isCollapsed ? 2 : 2,
-                    py: 1,
+                    px: isCollapsed ? 1.5 : 1.5,
+                    py: 0.5,
+                    minHeight: 36,
                     "&.Mui-selected": {
                       backgroundColor: theme.palette.action.selected,
                     },
@@ -416,11 +500,11 @@ const Sidebar = ({
                 >
                   <ListItemIcon
                     sx={{
-                      minWidth: 48,
+                      minWidth: 28,
                       justifyContent: "center",
                     }}
                   >
-                    <ChatIcon sx={{ fontSize: 18 }} />
+                    <ChatIcon sx={{ fontSize: 16 }} />
                   </ListItemIcon>
                   {!isCollapsed && (
                     <>
@@ -428,10 +512,11 @@ const Sidebar = ({
                         primary={session.title}
                         slotProps={{
                           primary: {
-                            fontSize: "0.875rem",
+                            fontSize: "0.8rem",
                             fontWeight:
                               activeChatSessionId === session.id ? 500 : 400,
                             noWrap: true,
+                            lineHeight: 1.2,
                           },
                         }}
                       />
@@ -443,12 +528,13 @@ const Sidebar = ({
                           opacity: 0,
                           transition: "opacity 0.2s",
                           color: "text.secondary",
+                          p: 0.25,
                           "&:hover": {
                             color: "error.main",
                           },
                         }}
                       >
-                        <DeleteIcon sx={{ fontSize: 16 }} />
+                        <DeleteIcon sx={{ fontSize: 14 }} />
                       </IconButton>
                     </>
                   )}
@@ -462,8 +548,9 @@ const Sidebar = ({
 
       <Divider />
 
-      <List sx={{ px: 1, py: 2 }}>
-        <ListItem disablePadding>
+      {/* Bottom Items - More Compact */}
+      <List sx={{ px: 1, py: 1.5 }}>
+        <ListItem disablePadding sx={{ mb: 0.5 }}>
           <Tooltip
             title={isCollapsed ? "OVMS Status" : ""}
             placement="right"
@@ -472,22 +559,26 @@ const Sidebar = ({
             <ListItemButton
               onClick={handleOvmsStatusClick}
               sx={{
-                borderRadius: 2,
+                borderRadius: 1.5,
                 justifyContent: isCollapsed ? "center" : "initial",
-                px: isCollapsed ? 2 : 2,
+                px: isCollapsed ? 1.5 : 2,
+                py: 0.75,
+                minHeight: 40,
                 "&:hover": {
                   backgroundColor: theme.palette.action.hover,
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 40, justifyContent: "center" }}>
-                <MemoryIcon />
+              <ListItemIcon sx={{ minWidth: 32, justifyContent: "center" }}>
+                <MemoryIcon sx={{ fontSize: 20 }} />
               </ListItemIcon>
               {!isCollapsed && (
                 <ListItemText
                   primary="OVMS Status"
-                  primaryTypographyProps={{
-                    fontSize: "0.95rem",
+                  slotProps={{
+                    primary: {
+                      fontSize: "0.85rem",
+                    },
                   }}
                 />
               )}
@@ -495,7 +586,7 @@ const Sidebar = ({
           </Tooltip>
         </ListItem>
 
-        <ListItem disablePadding sx={{ mt: 1 }}>
+        <ListItem disablePadding>
           <Tooltip
             title={isCollapsed ? "Settings" : ""}
             placement="right"
@@ -504,22 +595,26 @@ const Sidebar = ({
             <ListItemButton
               onClick={handleSettingsClick}
               sx={{
-                borderRadius: 2,
+                borderRadius: 1.5,
                 justifyContent: isCollapsed ? "center" : "initial",
-                px: isCollapsed ? 2 : 2,
+                px: isCollapsed ? 1.5 : 2,
+                py: 0.75,
+                minHeight: 40,
                 "&:hover": {
                   backgroundColor: theme.palette.action.hover,
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 40, justifyContent: "center" }}>
-                <SettingsIcon />
+              <ListItemIcon sx={{ minWidth: 32, justifyContent: "center" }}>
+                <SettingsIcon sx={{ fontSize: 20 }} />
               </ListItemIcon>
               {!isCollapsed && (
                 <ListItemText
                   primary="Settings"
-                  primaryTypographyProps={{
-                    fontSize: "0.95rem",
+                  slotProps={{
+                    primary: {
+                      fontSize: "0.85rem",
+                    },
                   }}
                 />
               )}

@@ -6,6 +6,7 @@ mod huggingface;
 mod ovms;
 mod chat;
 mod rag;
+mod mcp;
 
 #[tauri::command]
 async fn check_downloaded_models(download_path: Option<String>) -> Result<Vec<String>, String> {
@@ -575,7 +576,16 @@ pub fn run() {
                 rag::reranker::rerank_search_results,
                 rag::reranker::rerank_search_results_simple,
                 rag::search::search_documents_by_query,
-                rag::search::get_search_suggestions
+                rag::search::get_search_suggestions,
+                mcp::get_mcp_servers,
+                mcp::add_mcp_server,
+                mcp::remove_mcp_server,
+                mcp::connect_mcp_server,
+                mcp::disconnect_mcp_server,
+                mcp::get_mcp_server_info,
+                mcp::fetch_mcp_server_tools,
+                mcp::get_all_mcp_tools_for_chat,
+                mcp::call_mcp_tool
             ]
         )
         .setup(|app| {

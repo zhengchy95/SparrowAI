@@ -1,0 +1,287 @@
+use super::config::{McpConfig, McpServerConfig};
+use super::client::{McpManager, McpServerInfo};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
+
+// Global MCP manager instance
+lazy_static::lazy_static! {
+    static ref MCP_MANAGER: Arc<Mutex<Option<McpManager>>> = Arc::new(Mutex::new(None));
+}
+
+async fn get_or_init_manager(app_handle: &AppHandle) -> Result<(), String> {
+    let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+    
+    if manager_guard.is_none() {
+        let config_path = McpConfig::get_config_path(app_handle)
+            .map_err(|e| format!("Failed to get config path: {}", e))?;
+            
+        let config = McpConfig::load_from_file(&config_path)
+            .map_err(|e| format!("Failed to load config: {}", e))?;
+            
+        *manager_guard = Some(McpManager::new(config));
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_mcp_servers(app_handle: AppHandle) -> Result<Vec<McpServerInfo>, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    // We can't hold the lock across await, so we need to restructure this
+    // For now, let's create the server info without async calls in the critical section
+    let servers = {
+        let manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let manager = manager_guard.as_ref().ok_or("Manager not initialized")?;
+        
+        // Get basic server info without tools for now
+        let mut servers = Vec::new();
+        for (name, config) in manager.get_config().list_servers() {
+            let status = if manager.clients.contains_key(name) {
+                "connected"
+            } else {
+                "disconnected"
+            };
+            
+            servers.push(McpServerInfo {
+                name: name.clone(),
+                config: config.clone(),
+                status: status.to_string(),
+                tools: vec![], // Will be populated separately
+            });
+        }
+        servers
+    };
+    
+    // TODO: Fetch tools for connected servers in a separate step
+    
+    Ok(servers)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AddServerRequest {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: Option<HashMap<String, String>>,
+}
+
+#[tauri::command]
+pub async fn add_mcp_server(
+    app_handle: AppHandle,
+    request: AddServerRequest,
+) -> Result<String, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    let server_config = McpServerConfig {
+        command: request.command,
+        args: request.args,
+        env: request.env,
+    };
+    
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let manager = manager_guard.as_mut().ok_or("Manager not initialized")?;
+        
+        manager.add_server(request.name.clone(), server_config);
+        
+        // Save config to file
+        let config_path = McpConfig::get_config_path(&app_handle)
+            .map_err(|e| format!("Failed to get config path: {}", e))?;
+        manager.get_config().save_to_file(&config_path)
+            .map_err(|e| format!("Failed to save config: {}", e))?;
+    }
+    
+    Ok(format!("MCP server '{}' added successfully", request.name))
+}
+
+#[tauri::command]
+pub async fn remove_mcp_server(
+    app_handle: AppHandle,
+    server_name: String,
+) -> Result<String, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let manager = manager_guard.as_mut().ok_or("Manager not initialized")?;
+        
+        manager.remove_server(&server_name)
+            .ok_or_else(|| format!("Server '{}' not found", server_name))?;
+        
+        // Save config to file
+        let config_path = McpConfig::get_config_path(&app_handle)
+            .map_err(|e| format!("Failed to get config path: {}", e))?;
+        manager.get_config().save_to_file(&config_path)
+            .map_err(|e| format!("Failed to save config: {}", e))?;
+    }
+    
+    Ok(format!("MCP server '{}' removed successfully", server_name))
+}
+
+#[tauri::command]
+pub async fn connect_mcp_server(
+    app_handle: AppHandle,
+    server_name: String,
+) -> Result<String, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    // We need to extract the manager temporarily to call async methods
+    let mut temp_manager = {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        manager_guard.take().ok_or("Manager not initialized")?
+    };
+    
+    // Connect to server (this is async)
+    let connection_result = temp_manager.connect_to_server(&server_name).await;
+    
+    // Put the manager back
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        *manager_guard = Some(temp_manager);
+    }
+    
+    // Handle connection result
+    connection_result.map_err(|e| format!("Failed to connect to server '{}': {}", server_name, e))?;
+    
+    Ok(format!("Connected to MCP server '{}'", server_name))
+}
+
+#[tauri::command]
+pub async fn disconnect_mcp_server(
+    app_handle: AppHandle,
+    server_name: String,
+) -> Result<String, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let manager = manager_guard.as_mut().ok_or("Manager not initialized")?;
+        
+        manager.disconnect_from_server(&server_name);
+    }
+    
+    Ok(format!("Disconnected from MCP server '{}'", server_name))
+}
+
+#[tauri::command]
+pub async fn get_mcp_server_info(
+    app_handle: AppHandle,
+    server_name: String,
+) -> Result<Option<McpServerInfo>, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    // Get basic info first
+    let basic_info = {
+        let manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let manager = manager_guard.as_ref().ok_or("Manager not initialized")?;
+        
+        if let Some(config) = manager.get_config().get_server(&server_name) {
+            let status = if manager.clients.contains_key(&server_name) {
+                "connected"
+            } else {
+                "disconnected"
+            };
+            
+            Some(McpServerInfo {
+                name: server_name.clone(),
+                config: config.clone(),
+                status: status.to_string(),
+                tools: vec![], // Will be populated below if connected
+            })
+        } else {
+            None
+        }
+    };
+    
+    // If server is connected, try to fetch tools
+    if let Some(info) = basic_info {
+        if info.status == "connected" {
+            // TODO: Implement tool fetching without holding the lock
+            // This requires restructuring to avoid async in lock
+        }
+        Ok(Some(info))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn fetch_mcp_server_tools(
+    app_handle: AppHandle,
+    server_name: String,
+) -> Result<Vec<String>, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    // Similar pattern - extract manager temporarily
+    let temp_manager = {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        manager_guard.take().ok_or("Manager not initialized")?
+    };
+    
+    // Fetch tools (this is async)
+    let tools_result = temp_manager.fetch_tools(&server_name).await;
+    
+    // Put the manager back
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        *manager_guard = Some(temp_manager);
+    }
+    
+    // Handle result
+    tools_result.map_err(|e| format!("Failed to fetch tools: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_all_mcp_tools_for_chat(
+    app_handle: AppHandle,
+) -> Result<Vec<async_openai::types::ChatCompletionTool>, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    // Extract manager temporarily
+    let temp_manager = {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        manager_guard.take().ok_or("Manager not initialized")?
+    };
+    
+    // Get all tools (this is async)
+    let tools_result = temp_manager.get_all_tools_for_openai().await;
+    
+    // Put the manager back
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        *manager_guard = Some(temp_manager);
+    }
+    
+    // Handle result
+    tools_result.map_err(|e| format!("Failed to get all MCP tools: {}", e))
+}
+
+#[tauri::command]
+pub async fn call_mcp_tool(
+    app_handle: AppHandle,
+    tool_name: String,
+    arguments: Option<serde_json::Map<String, serde_json::Value>>,
+) -> Result<String, String> {
+    get_or_init_manager(&app_handle).await?;
+    
+    // Extract manager temporarily
+    let temp_manager = {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        manager_guard.take().ok_or("Manager not initialized")?
+    };
+    
+    // Call tool (this is async)
+    let call_result = temp_manager.call_mcp_tool(&tool_name, arguments).await;
+    
+    // Put the manager back
+    {
+        let mut manager_guard = MCP_MANAGER.lock().map_err(|e| format!("Lock error: {}", e))?;
+        *manager_guard = Some(temp_manager);
+    }
+    
+    // Handle result
+    call_result.map_err(|e| format!("Failed to call MCP tool: {}", e))
+}

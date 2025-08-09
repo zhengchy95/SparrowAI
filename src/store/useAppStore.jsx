@@ -31,6 +31,7 @@ const useAppStore = create(
 
       // OVMS state
       isOvmsRunning: false,
+      loadedModel: null, // Currently loaded model in OVMS
 
       // Notification state
       notification: null,
@@ -91,6 +92,7 @@ const useAppStore = create(
 
       // OVMS actions
       setIsOvmsRunning: (isRunning) => set({ isOvmsRunning: isRunning }),
+      setLoadedModel: (modelId) => set({ loadedModel: modelId }),
 
       // Notification actions
       showNotification: (message, type = "info", timeout = null) =>
@@ -126,6 +128,7 @@ const useAppStore = create(
           selectedModel: null,
           isSearching: false,
           isOvmsRunning: false,
+          loadedModel: null,
         };
       },
     }

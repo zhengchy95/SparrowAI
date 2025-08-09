@@ -25,6 +25,7 @@ import { createAppTheme } from "./Themes";
 // Import ChatPage component
 import ChatPage from "./components/ChatPage";
 import DocumentsPage from "./components/DocumentsPage";
+import McpPage from "./components/McpPage";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("chat");
@@ -149,6 +150,8 @@ function App() {
         return <ModelsPage />;
       case "documents":
         return <DocumentsPage />;
+      case "mcp":
+        return <McpPage />;
       default:
         return <ChatPage />;
     }

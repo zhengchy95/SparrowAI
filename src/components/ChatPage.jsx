@@ -44,7 +44,7 @@ let globalStreamingTimeout = null;
 let globalStreamingStartTime = null;
 
 const ChatPage = () => {
-  const { downloadedModels, settings, showNotification, isOvmsRunning } =
+  const { downloadedModels, settings, showNotification, isOvmsRunning, loadedModel, setLoadedModel } =
     useAppStore();
   const {
     activeChatSessionId,
@@ -57,10 +57,10 @@ const ChatPage = () => {
     setTemporarySession,
     clearTemporarySession,
     addChatSession,
+    chatSessions,
   } = useChatStore();
   const [inputMessage, setInputMessage] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
-  const [loadedModels, setLoadedModels] = useState([]);
   const [systemCapabilities, setSystemCapabilities] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
@@ -75,6 +75,12 @@ const ChatPage = () => {
   useEffect(() => {
     const initialize = async () => {
       await setupEventListeners();
+      
+      // Set the selected model from the loaded model state
+      if (loadedModel && !selectedModel) {
+        console.log("Pre-selecting loaded model from store:", loadedModel);
+        setSelectedModel(loadedModel);
+      }
     };
 
     initialize();
@@ -94,24 +100,15 @@ const ChatPage = () => {
             ovmsStatus.loaded_models &&
             ovmsStatus.loaded_models.length > 0
           ) {
-            const models = ovmsStatus.loaded_models.map((modelName) => ({
-              model_id: `OpenVINO/${modelName}`,
-              device: { oem: "OpenVINO" },
-            }));
-
-            setLoadedModels(models);
-
-            // Pre-select the first loaded model that's also downloaded
-            const modelToSelect = models.find((model) =>
-              downloadedModels.has(model.model_id)
-            );
-
-            if (modelToSelect) {
-              console.log(
-                "Post-init pre-selecting model:",
-                modelToSelect.model_id
-              );
-              setSelectedModel(modelToSelect.model_id);
+            // Sort models to ensure consistency, then get the first one
+            const sortedModels = ovmsStatus.loaded_models.sort();
+            const firstLoadedModel = `OpenVINO/${sortedModels[0]}`;
+            
+            // Check if this model is also downloaded
+            if (downloadedModels.has(firstLoadedModel)) {
+              console.log("Post-init pre-selecting model:", firstLoadedModel);
+              setSelectedModel(firstLoadedModel);
+              setLoadedModel(firstLoadedModel); // Update global loaded model state
             }
           }
         } catch (error) {
@@ -139,7 +136,7 @@ const ChatPage = () => {
         handleOvmsInitComplete
       );
     };
-  }, [downloadedModels]);
+  }, [downloadedModels, loadedModel, selectedModel]);
 
   // Load messages when active chat session changes
   useEffect(() => {
@@ -149,8 +146,21 @@ const ChatPage = () => {
       if (temporarySession && temporarySession.id === activeChatSessionId) {
         const messagesFromTemp = temporarySession.messages || [];
         setCurrentChatMessages(messagesFromTemp);
+        
+        // Pre-select the model from the temporary session if available
+        if (temporarySession.model_id && temporarySession.model_id !== selectedModel) {
+          console.log("Pre-selecting model from session:", temporarySession.model_id);
+          setSelectedModel(temporarySession.model_id);
+        }
       } else {
         loadChatSessionMessages(activeChatSessionId);
+        
+        // Also try to pre-select model from persisted session
+        const persistedSession = chatSessions[activeChatSessionId];
+        if (persistedSession && persistedSession.model_id && persistedSession.model_id !== selectedModel) {
+          console.log("Pre-selecting model from persisted session:", persistedSession.model_id);
+          setSelectedModel(persistedSession.model_id);
+        }
       }
     } else {
       clearCurrentChatMessages();
@@ -384,12 +394,8 @@ const ChatPage = () => {
       setIsLoadingModel(true);
       setSelectedModel(newModelId);
 
-      // Check if the new model is already loaded (from OVMS status)
-      const isModelAlreadyLoaded = loadedModels.some(
-        (model) => model.model_id === newModelId
-      );
-
-      if (isModelAlreadyLoaded) {
+      // Check if the new model is already loaded (from global state)
+      if (loadedModel === newModelId) {
         console.log("Model is already loaded in OVMS, no need to load again");
         showNotification(
           `Model already loaded: ${
@@ -397,12 +403,15 @@ const ChatPage = () => {
           }`,
           "success"
         );
+        
+        // Update global loaded model state
+        setLoadedModel(newModelId);
       } else {
         // If a different model is currently loaded, try to unload it first
-        if (loadedModels.length > 0) {
+        if (loadedModel) {
           try {
             await invoke("unload_model");
-            setLoadedModels([]);
+            setLoadedModel(null);
           } catch (unloadError) {
             // If unload fails, it might be because the old tracking system doesn't know about the model
             // Just continue with loading the new model
@@ -438,35 +447,12 @@ const ChatPage = () => {
           }`,
           "success"
         );
+        
+        // Update global loaded model state
+        setLoadedModel(newModelId);
       }
 
-      // Refresh loaded models list using OVMS status
-      try {
-        const ovmsStatus = await invoke("check_ovms_status");
-        if (
-          ovmsStatus &&
-          ovmsStatus.loaded_models &&
-          ovmsStatus.loaded_models.length > 0
-        ) {
-          const models = ovmsStatus.loaded_models.map((modelName) => ({
-            model_id: `OpenVINO/${modelName}`,
-            device: { oem: "OpenVINO" },
-          }));
-          setLoadedModels(models);
-        } else {
-          setLoadedModels([]);
-        }
-      } catch (ovmsError) {
-        // Fallback to old method
-        const loadedModel = await invoke("get_loaded_model");
-        if (loadedModel) {
-          setLoadedModels([
-            { model_id: loadedModel, device: { oem: "OpenVINO" } },
-          ]);
-        } else {
-          setLoadedModels([]);
-        }
-      }
+      // The loadedModel state is already updated above, no need to refresh arrays
     } catch (error) {
       console.error("Failed to load model:", error);
       showNotification(`Failed to load model: ${error}`, "error");
@@ -475,17 +461,40 @@ const ChatPage = () => {
     } finally {
       setIsLoadingModel(false);
     }
+    
+    // Update the active session with the selected model
+    try {
+      if (activeChatSessionId) {
+        if (temporarySession && temporarySession.id === activeChatSessionId) {
+          // Update temporary session
+          const updatedTempSession = { ...temporarySession, model_id: newModelId };
+          setTemporarySession(updatedTempSession);
+        } else {
+          // Update persisted session
+          await invoke("update_chat_session", {
+            sessionId: activeChatSessionId,
+            title: null, // Don't change title
+            modelId: newModelId
+          });
+          // Also update local store
+          updateChatSession(activeChatSessionId, { model_id: newModelId });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to update session with model:", error);
+      // Don't show error notification as model change was successful
+    }
   };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
-    if (loadedModels.length === 0) {
+    if (!loadedModel) {
       showNotification("Please load a model first", "warning");
       return;
     }
 
-    console.log("Loaded models:", loadedModels);
+    console.log("Loaded model:", loadedModel);
 
     if (!activeChatSessionId) {
       showNotification(
@@ -776,8 +785,22 @@ const ChatPage = () => {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            onFocus={() => {
-              if (loadedModels.length === 0) {
+            onFocus={async () => {
+              if (!selectedModel && !loadedModel) {
+                // Check if there's actually a model loaded in OVMS
+                try {
+                  const ovmsStatus = await invoke("check_ovms_status");
+                  if (ovmsStatus && ovmsStatus.loaded_models && ovmsStatus.loaded_models.length > 0) {
+                    // There are loaded models, update our state
+                    const firstModel = `OpenVINO/${ovmsStatus.loaded_models[0]}`;
+                    setLoadedModel(firstModel);
+                    setSelectedModel(firstModel);
+                    return; // Don't show the notification
+                  }
+                } catch (error) {
+                  console.error("Failed to check OVMS status:", error);
+                }
+                
                 showNotification(
                   "Please select and load a model first",
                   "warning"
@@ -791,7 +814,7 @@ const ChatPage = () => {
             }}
             placeholder="How can I help you today?"
             disabled={
-              isSending || loadedModels.length === 0 || !activeChatSessionId
+              isSending || (!selectedModel && !loadedModel) || !activeChatSessionId
             }
             variant="outlined"
             sx={{
@@ -856,7 +879,7 @@ const ChatPage = () => {
             disabled={
               !inputMessage.trim() ||
               isSending ||
-              loadedModels.length === 0 ||
+              (!selectedModel && !loadedModel) ||
               !activeChatSessionId
             }
             endIcon={
