@@ -1,4 +1,5 @@
 use super::config::{McpConfig, McpServerConfig};
+use tracing::{info, warn, debug};
 use rmcp::{ServiceExt, transport::TokioChildProcess, service::RunningService, RoleClient};
 use rmcp::model::CallToolRequestParam;
 use serde::{Deserialize, Serialize};
@@ -30,10 +31,11 @@ impl McpManager {
     }
     
     pub async fn connect_to_server(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        info!(server_name = %name, "Attempting to connect to MCP server");
         let server_config = self.config.get_server(name)
             .ok_or(format!("Server '{}' not found in configuration", name))?;
             
-        println!("Starting MCP server: {} {}", server_config.command, server_config.args.join(" "));
+        info!(command = %server_config.command, args = ?server_config.args, "Starting MCP server");
         
         // Create the command
         let mut cmd = Command::new(&server_config.command);
@@ -54,12 +56,12 @@ impl McpManager {
         let client = ().serve(transport).await?;
         
         self.clients.insert(name.to_string(), client);
-        println!("Successfully connected to MCP server: {}", name);
-        
+        info!(server_name = %name, "Successfully connected to MCP server");
         Ok(())
     }
     
     pub fn disconnect_from_server(&mut self, name: &str) {
+        info!(server_name = %name, "Disconnecting from MCP server");
         self.clients.remove(name);
     }
     
@@ -68,7 +70,7 @@ impl McpManager {
         let client = self.clients.get(server_name)
             .ok_or(format!("Server '{}' not connected", server_name))?;
             
-        println!("Fetching tools from MCP server: {}", server_name);
+        debug!(server_name = %server_name, "Fetching tools from MCP server");
         let tools_response = client.list_tools(Default::default()).await?;
         
         let tool_names: Vec<String> = tools_response.tools
@@ -76,7 +78,7 @@ impl McpManager {
             .map(|tool| tool.name.to_string())
             .collect();
             
-        println!("Found {} tools from {}: {:?}", tool_names.len(), server_name, tool_names);
+        info!(server_name = %server_name, tool_count = tool_names.len(), tools = ?tool_names, "Found tools from MCP server");
         Ok(tool_names)
     }
     
@@ -99,7 +101,7 @@ impl McpManager {
         let mut all_tools = Vec::new();
         
         for (server_name, client) in &self.clients {
-            println!("Getting tools from server: {}", server_name);
+            debug!(server_name = %server_name, "Getting tools from server");
             
             // Get actual tools from the MCP server
             match client.list_tools(Default::default()).await {
@@ -119,13 +121,13 @@ impl McpManager {
                     }
                 }
                 Err(e) => {
-                    println!("Failed to get tools from server {}: {}", server_name, e);
+                    warn!(server_name = %server_name, error = %e, "Failed to get tools from server");
                     continue;
                 }
             }
         }
         
-        println!("Total MCP tools available: {}", all_tools.len());
+        info!(tool_count = all_tools.len(), "Total MCP tools available");
         Ok(all_tools)
     }
     
@@ -146,7 +148,7 @@ impl McpManager {
         let client = self.clients.get(server_name)
             .ok_or(format!("Server '{}' not connected", server_name))?;
         
-        println!("Calling MCP tool: {} on server: {}", actual_tool_name, server_name);
+        info!(tool_name = %actual_tool_name, server_name = %server_name, arguments = ?arguments, "Calling MCP tool");
         
         // Call the actual MCP tool
         let result = client.call_tool(CallToolRequestParam {
@@ -192,7 +194,7 @@ impl McpManager {
             "No content returned from tool".to_string()
         };
         
-        println!("Tool {} result: {}", actual_tool_name, result_str);
+        debug!(tool_name = %actual_tool_name, result = %result_str, "MCP tool execution completed");
         Ok(result_str)
     }
 }

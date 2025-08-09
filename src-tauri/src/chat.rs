@@ -1,8 +1,8 @@
 use serde::{ Deserialize, Serialize };
+use tracing::{warn, error, debug};
 use serde_json;
 use std::collections::HashMap;
-use std::fs::{ self, OpenOptions };
-use std::io::Write;
+use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 use async_openai::types::ChatCompletionRequestUserMessageArgs;
@@ -50,33 +50,6 @@ impl Default for ChatSessionsStorage {
     }
 }
 
-fn get_log_file_path() -> Result<PathBuf, String> {
-    let home_dir = std::env
-        ::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .map_err(|_| "Failed to get user home directory".to_string())?;
-
-    let sparrow_dir = PathBuf::from(home_dir).join(".sparrow");
-
-    // Create .sparrow directory if it doesn't exist
-    if !sparrow_dir.exists() {
-        fs
-            ::create_dir_all(&sparrow_dir)
-            .map_err(|e| format!("Failed to create .sparrow directory: {}", e))?;
-    }
-
-    Ok(sparrow_dir.join("chat_debug.log"))
-}
-
-fn log_to_file(message: &str) {
-    if let Ok(log_path) = get_log_file_path() {
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
-            let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-            let _ = writeln!(file, "[{}] {}", timestamp, message);
-            let _ = file.flush();
-        }
-    }
-}
 
 fn get_chat_sessions_path() -> Result<PathBuf, String> {
     let home_dir = std::env
@@ -97,6 +70,7 @@ fn get_chat_sessions_path() -> Result<PathBuf, String> {
 }
 
 fn load_chat_sessions() -> Result<ChatSessionsStorage, String> {
+    debug!("Loading chat sessions");
     let path = get_chat_sessions_path()?;
 
     if !path.exists() {
@@ -107,10 +81,16 @@ fn load_chat_sessions() -> Result<ChatSessionsStorage, String> {
         ::read_to_string(&path)
         .map_err(|e| format!("Failed to read chat sessions file: {}", e))?;
 
-    serde_json::from_str(&contents).map_err(|e| format!("Failed to parse chat sessions: {}", e))
+    let result = serde_json::from_str::<ChatSessionsStorage>(&contents).map_err(|e| format!("Failed to parse chat sessions: {}", e));
+    match &result {
+        Ok(sessions) => debug!(session_count = sessions.sessions.len(), "Chat sessions loaded successfully"),
+        Err(e) => error!(error = %e, "Failed to load chat sessions"),
+    }
+    result
 }
 
 fn save_chat_sessions(storage: &ChatSessionsStorage) -> Result<(), String> {
+    debug!(session_count = storage.sessions.len(), "Saving chat sessions");
     let path = get_chat_sessions_path()?;
 
     let contents = serde_json
@@ -402,21 +382,21 @@ pub async fn chat_with_loaded_model_streaming(
     // Get MCP tools info for system message
     let mcp_tools = match mcp::get_all_mcp_tools_for_chat(app.clone()).await {
         Ok(tools) => {
-            log_to_file(&format!("Successfully loaded {} MCP tools for system message", tools.len()));
+            debug!("Successfully loaded {} MCP tools for system message", tools.len());
             tools
         }
         Err(e) => {
-            log_to_file(&format!("Failed to load MCP tools for system message: {}", e));
+            warn!("Failed to load MCP tools for system message: {}", e);
             Vec::new()
         }
     };
     
     let tools_info = if !mcp_tools.is_empty() {
-        log_to_file("Processing MCP tools for system message...");
+        debug!("Processing MCP tools for system message...");
         
         // Generate tool descriptions in simple text format for the custom template
         let tool_descs: Vec<String> = mcp_tools.iter().enumerate().map(|(i, tool)| {
-            log_to_file(&format!("Processing tool {}: {}", i, tool.function.name));
+            debug!("Processing tool {}: {}", i, tool.function.name);
             let params_str = match &tool.function.parameters {
                 Some(params) => serde_json::to_string_pretty(params).unwrap_or_default(),
                 None => "{}".to_string()
@@ -446,10 +426,10 @@ For each function call, return a json object with function name and arguments wi
 {{"name": <function-name>, "arguments": <args-json-object>}}
 </tool_call>"#, tool_descs_text);
 
-        log_to_file(&format!("Generated custom tool template: {} characters", formatted_tools.len()));
+        debug!("Generated custom tool template: {} characters", formatted_tools.len());
         formatted_tools
     } else {
-        log_to_file("No MCP tools available for system message");
+        debug!("No MCP tools available for system message");
         "".to_string()
     };
 
@@ -468,12 +448,12 @@ For each function call, return a json object with function name and arguments wi
     let system_message = format!("{}{}", base_system_message, tools_info);
     
     // Log what we're including
-    log_to_file(&format!("System message length: {} chars", system_message.len()));
-    log_to_file(&format!("Tools info length: {} chars", tools_info.len()));
+    debug!("System message length: {} chars", system_message.len());
+    debug!("Tools info length: {} chars", tools_info.len());
     if !tools_info.is_empty() {
-        log_to_file("Including tools info in system message");
+        debug!("Including tools info in system message");
     } else {
-        log_to_file("No tools info to include");
+        debug!("No tools info to include");
     }
 
     let mut messages = vec![
@@ -519,14 +499,14 @@ For each function call, return a json object with function name and arguments wi
                             );
                         }
                         _ => {
-                            println!("Skipping unknown role: {}", msg.role);
+                            warn!(role = %msg.role, "Skipping unknown role");
                             continue;
                         } // Skip unknown roles
                     };
                 }
             }
             Err(e) => {
-                println!("Failed to get conversation history: {}", e);
+                error!(error = %e, "Failed to get conversation history");
             }
         }
     }
@@ -540,8 +520,7 @@ For each function call, return a json object with function name and arguments wi
             .into()
     );
 
-    log_to_file(&format!("=== NEW CHAT REQUEST ==="));
-    log_to_file(&format!("Sending streaming message: {}", message));
+    debug!("Starting chat request");
 
     // Create streaming chat completion
     let mut request_builder = CreateChatCompletionRequestArgs::default();
@@ -571,7 +550,7 @@ For each function call, return a json object with function name and arguments wi
         Ok(mcp_tools) => {
             if !mcp_tools.is_empty() {
                 let mcp_info = format!("Adding {} MCP tools to chat completion", mcp_tools.len());
-                log_to_file(&mcp_info);
+                debug!("{}", mcp_info);
 
                 // Log each tool for debugging
                 for (i, tool) in mcp_tools.iter().enumerate() {
@@ -581,10 +560,10 @@ For each function call, return a json object with function name and arguments wi
                         &tool.function.name,
                         tool.function.description.as_ref().unwrap_or(&"No description".to_string())
                     );
-                    log_to_file(&tool_info);
+                    debug!("{}", tool_info);
                 }
 
-                log_to_file("Using modern 'tools' format...");
+                debug!("Using modern 'tools' format...");
                 request_builder.tools(mcp_tools.clone());
 
                 // Determine tool choice based on message content
@@ -598,7 +577,7 @@ For each function call, return a json object with function name and arguments wi
                 };
 
                 if let Some(tool) = forced_tool {
-                    log_to_file(&format!("Forcing specific tool call: {}", tool.function.name));
+                    debug!("Forcing specific tool call: {}", tool.function.name);
                     
                     let specific_choice = ChatCompletionNamedToolChoice {
                         r#type: ChatCompletionToolType::Function,
@@ -608,34 +587,29 @@ For each function call, return a json object with function name and arguments wi
                     };
                     request_builder.tool_choice(ChatCompletionToolChoiceOption::Named(specific_choice));
                 } else {
-                    log_to_file("Using auto tool choice (no specific match found)");
+                    debug!("Using auto tool choice (no specific match found)");
                     request_builder.tool_choice(ChatCompletionToolChoiceOption::Auto);
                 }
             } else {
-                log_to_file("No MCP tools available");
+                debug!("No MCP tools available");
             }
         }
         Err(e) => {
             let mcp_error = format!("Failed to get MCP tools: {}", e);
-            log_to_file(&mcp_error);
+            warn!("{}", mcp_error);
             // Continue without tools
         }
     }
     */
     
     // Tools info is now in system message instead
-    log_to_file("Tools info included in system message instead of request tools array");
+    debug!("Tools info included in system message instead of request tools array");
 
     let request = request_builder
         .build()
         .map_err(|e| format!("Failed to build chat request: {}", e))?;
 
-    // Debug: Log request body to file
-    log_to_file("=== REQUEST BODY ===");
-    let request_json = serde_json
-        ::to_string_pretty(&request)
-        .unwrap_or_else(|_| "Failed to serialize request".to_string());
-    log_to_file(&request_json);
+    // Request details logged to file only (verbose output disabled for console)
 
     // Check system message for tools info (since tools are now in system message)
     if let Ok(request_value) = serde_json::to_value(&request) {
@@ -645,9 +619,9 @@ For each function call, return a json object with function name and arguments wi
                     if let Some(content) = system_msg.get("content") {
                         if let Some(content_str) = content.as_str() {
                             if content_str.contains("<tools>") || content_str.contains("Available functions:") {
-                                log_to_file("Tools info found in system message");
+                                debug!("Tools info found in system message");
                             } else {
-                                log_to_file("No tools info found in system message");
+                                debug!("No tools info found in system message");
                             }
                         }
                     }
@@ -657,12 +631,12 @@ For each function call, return a json object with function name and arguments wi
         
         // Verify no tools array in request (should be commented out)
         if request_value.get("tools").is_some() {
-            log_to_file("WARNING: Tools array still present in request!");
+            warn!("Tools array still present in request!");
         } else {
-            log_to_file("Confirmed: No tools array in request (as expected)");
+            debug!("Confirmed: No tools array in request (as expected)");
         }
     }
-    log_to_file("===================");
+    // Request logging complete
 
     let mut stream = client
         .chat()
@@ -677,22 +651,10 @@ For each function call, return a json object with function name and arguments wi
     while let Some(result) = stream.next().await {
         match result {
             Ok(response) => {
-                // Debug: Log response body to file
-                log_to_file("=== RESPONSE CHUNK ===");
-                let response_json = serde_json
-                    ::to_string_pretty(&response)
-                    .unwrap_or_else(|_| "Failed to serialize response".to_string());
-                log_to_file(&response_json);
-                log_to_file("=====================");
+                // Stream response chunk logging disabled for cleaner output
 
                 for chat_choice in response.choices {
-                    let processing_info = format!(
-                        "Processing choice - has tool_calls: {}, has content: {}, finish_reason: {:?}",
-                        chat_choice.delta.tool_calls.is_some(),
-                        chat_choice.delta.content.is_some(),
-                        chat_choice.finish_reason
-                    );
-                    log_to_file(&processing_info);
+                    // Processing stream choice (verbose logging disabled)
 
                     // Handle content and look for <tool_call> XML tags
                     if let Some(content) = &chat_choice.delta.content {
@@ -719,7 +681,7 @@ For each function call, return a json object with function name and arguments wi
                             
                             executed_tools.insert(tool_signature);
                             
-                            log_to_file(&format!("Found complete tool call: name={}, args={}", fn_name, fn_args));
+                            debug!("Found complete tool call: name={}, args={}", fn_name, fn_args);
                             
                             // Parse arguments as JSON for MCP tool call
                             let args_map = match
@@ -735,7 +697,7 @@ For each function call, return a json object with function name and arguments wi
                                 Err(e) => {
                                     let parse_error =
                                         format!("Failed to parse tool arguments: {}", e);
-                                    log_to_file(&parse_error);
+                                    warn!("{}", parse_error);
                                     None
                                 }
                             };
@@ -748,7 +710,7 @@ For each function call, return a json object with function name and arguments wi
                                         fn_name,
                                         tool_result
                                     );
-                                    log_to_file(&tool_result_info);
+                                    debug!("{}", tool_result_info);
 
                                     // Emit function call result to frontend
                                     let _ = app.emit(
@@ -778,7 +740,7 @@ For each function call, return a json object with function name and arguments wi
                                 }
                                 Err(e) => {
                                     let tool_error = format!("Tool call failed: {}", e);
-                                    log_to_file(&tool_error);
+                                    error!("{}", tool_error);
                                     let error_response_text = format!("\n<tool_response>\nError: {}\n</tool_response>", e);
                                     full_response.push_str(&error_response_text);
                                     
@@ -800,18 +762,18 @@ For each function call, return a json object with function name and arguments wi
 
                     // Handle finish reason
                     if let Some(_finish_reason) = &chat_choice.finish_reason {
-                        log_to_file(&format!("Stream finished with reason: {:?}", _finish_reason));
+                        debug!("Stream finished with reason: {:?}", _finish_reason);
                         
                         // Check for any remaining incomplete tool calls
                         if has_incomplete_tool_call(&full_response) {
-                            log_to_file("Warning: Stream ended with incomplete tool call");
+                            warn!("Stream ended with incomplete tool call");
                         }
                     }
                 }
             }
             Err(err) => {
                 let error_info = format!("error: {err}");
-                log_to_file(&error_info);
+                error!("{}", error_info);
                 let _ = app.emit(
                     "chat-error",
                     serde_json::json!({
@@ -825,13 +787,13 @@ For each function call, return a json object with function name and arguments wi
 
     // Continue the conversation if we executed tools and got JSON responses
     if needs_continuation {
-        log_to_file("Checking if continuation is needed after tool execution...");
+        debug!("Checking if continuation is needed after tool execution...");
         
         // Check if the tool responses contain JSON structures that need interpretation
         let should_continue = check_if_continuation_needed(&full_response);
         
         if should_continue {
-            log_to_file("Tool response contains JSON - continuing conversation...");
+            debug!("Tool response contains JSON - continuing conversation...");
             
             match continue_conversation_after_tools(
                 app.clone(),
@@ -853,7 +815,7 @@ For each function call, return a json object with function name and arguments wi
                     }
                 }
                 Err(e) => {
-                    log_to_file(&format!("Failed to continue conversation: {}", e));
+                    error!("Failed to continue conversation: {}", e);
                     let error_msg = format!("\n\n[Continuation Error: {}]", e);
                     full_response.push_str(&error_msg);
                     
@@ -867,7 +829,7 @@ For each function call, return a json object with function name and arguments wi
                 }
             }
         } else {
-            log_to_file("Tool response doesn't contain JSON - no continuation needed");
+            debug!("Tool response doesn't contain JSON - no continuation needed");
         }
     }
 
@@ -896,7 +858,7 @@ async fn continue_conversation_after_tools(
     max_tokens: Option<u32>,
     max_completion_tokens: Option<u32>
 ) -> Result<String, String> {
-    log_to_file("=== CONTINUING CONVERSATION AFTER TOOLS ===");
+    debug!("Continuing conversation after tool execution");
     
     // Build new message list with the assistant's response containing tool calls and results
     let mut continuation_messages = vec![
@@ -945,7 +907,7 @@ async fn continue_conversation_after_tools(
         .build()
         .map_err(|e| format!("Failed to build continuation request: {}", e))?;
 
-    log_to_file("Sending continuation request...");
+    debug!("Sending continuation request...");
 
     let mut stream = client
         .chat()
@@ -973,20 +935,20 @@ async fn continue_conversation_after_tools(
                     }
                     
                     if let Some(finish_reason) = &chat_choice.finish_reason {
-                        log_to_file(&format!("Continuation finished with reason: {:?}", finish_reason));
+                        debug!("Continuation finished with reason: {:?}", finish_reason);
                         break;
                     }
                 }
             }
             Err(err) => {
                 let error_info = format!("Continuation stream error: {}", err);
-                log_to_file(&error_info);
+                error!("{}", error_info);
                 return Err(error_info);
             }
         }
     }
     
-    log_to_file(&format!("Continuation response: {}", continued_response));
+    debug!("Continuation response: {}", continued_response);
     Ok(continued_response)
 }
 
@@ -1016,7 +978,7 @@ pub async fn chat_with_rag_streaming(
                 context_content = context;
             }
             Err(e) => {
-                eprintln!("RAG retrieval failed: {}", e);
+                error!(error = %e, "RAG retrieval failed");
                 // Continue without RAG context rather than failing completely
             }
         }

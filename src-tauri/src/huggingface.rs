@@ -1,4 +1,5 @@
 use serde::{ Deserialize, Serialize };
+use tracing::{info, warn, error};
 use std::path::PathBuf;
 use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
@@ -201,7 +202,7 @@ pub async fn search_models(query: String, limit: Option<u32>) -> Result<SearchRe
         match get_model_info(model_id.clone()).await {
             Ok(model_info) => models.push(model_info),
             Err(e) => {
-                eprintln!("Failed to get info for model {}: {}", model_id, e);
+                warn!(model_id = %model_id, error = %e, "Failed to get info for model");
                 // Continue with other models instead of failing entirely
             }
         }
@@ -385,7 +386,7 @@ pub async fn download_entire_model(
             }
             Err(e) => {
                 let error_msg = format!("Failed to download {}: {}", file_info.path, e);
-                eprintln!("{}", error_msg);
+                error!(error = %error_msg, "Model download failed");
                 errors.push(error_msg);
 
                 // Continue with other files instead of crashing
@@ -414,9 +415,9 @@ pub async fn download_entire_model(
 
     // Generate graph.pbtxt for OVMS compatibility
     if let Err(e) = crate::ovms::generate_ovms_graph(&target_dir, &normalized_model_id) {
-        eprintln!("Warning: Failed to generate graph.pbtxt: {}", e);
+        warn!(error = %e, "Failed to generate graph.pbtxt");
     } else {
-        println!("graph.pbtxt generated for model: {}", normalized_model_id);
+        info!(model_id = %normalized_model_id, "graph.pbtxt generated for model");
     }
 
     if !errors.is_empty() {

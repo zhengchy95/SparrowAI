@@ -58,3 +58,8 @@ mime_guess = "2.0"
 rmcp = { version = "0.4", features = ["transport-child-process", "client"] }
 lazy_static = "1.4"
 
+# Logging
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "chrono"] }
+tracing-appender = "0.2"
+
