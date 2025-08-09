@@ -63,25 +63,6 @@ impl McpManager {
         self.clients.remove(name);
     }
     
-    pub async fn get_server_info(&self, name: &str) -> Option<McpServerInfo> {
-        let server_config = self.config.get_server(name)?;
-        let (status, tools) = if let Some(_client) = self.clients.get(name) {
-            let tools = match self.fetch_tools(name).await {
-                Ok(tool_list) => tool_list,
-                Err(_) => vec![],
-            };
-            ("connected", tools)
-        } else {
-            ("disconnected", vec![])
-        };
-        
-        Some(McpServerInfo {
-            name: name.to_string(),
-            config: server_config.clone(),
-            status: status.to_string(),
-            tools,
-        })
-    }
     
     pub async fn fetch_tools(&self, server_name: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let client = self.clients.get(server_name)
@@ -99,15 +80,6 @@ impl McpManager {
         Ok(tool_names)
     }
     
-    pub async fn list_servers(&self) -> Vec<McpServerInfo> {
-        let mut servers = Vec::new();
-        for (name, _) in self.config.list_servers() {
-            if let Some(info) = self.get_server_info(name).await {
-                servers.push(info);
-            }
-        }
-        servers
-    }
     
     pub fn add_server(&mut self, name: String, config: McpServerConfig) {
         self.config.add_server(name, config);
@@ -122,9 +94,6 @@ impl McpManager {
         &self.config
     }
     
-    pub fn get_config_mut(&mut self) -> &mut McpConfig {
-        &mut self.config
-    }
     
     pub async fn get_all_tools_for_openai(&self) -> Result<Vec<ChatCompletionTool>, Box<dyn std::error::Error>> {
         let mut all_tools = Vec::new();

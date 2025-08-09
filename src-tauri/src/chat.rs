@@ -1090,27 +1090,6 @@ async fn perform_rag_retrieval(query: &str, limit: usize) -> Result<String, Stri
     Ok(context_content)
 }
 
-fn extract_tool_call_from_xml(text: &str) -> Option<(String, String)> {
-    // Find <tool_call> content
-    if let Some(start) = text.find("<tool_call>") {
-        if let Some(end) = text.find("</tool_call>") {
-            let tool_call_content = &text[start + 11..end]; // 11 is length of "<tool_call>"
-            
-            // Parse JSON inside the tool_call tags
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(tool_call_content) {
-                if let (Some(name), Some(args)) = (parsed.get("name"), parsed.get("arguments")) {
-                    if let (Some(name_str), Some(args_obj)) = (name.as_str(), args.as_object()) {
-                        return Some((
-                            name_str.to_string(),
-                            serde_json::to_string(args_obj).unwrap_or_default()
-                        ));
-                    }
-                }
-            }
-        }
-    }
-    None
-}
 
 fn extract_all_tool_calls_from_xml(text: &str) -> Vec<(String, String)> {
     let mut tool_calls = Vec::new();
@@ -1152,29 +1131,6 @@ fn has_incomplete_tool_call(text: &str) -> bool {
     false
 }
 
-fn is_inside_tool_tags(text: &str) -> bool {
-    // Check if we're currently inside a <tool_call> or <tool_response> tag
-    let last_tool_call_start = text.rfind("<tool_call>");
-    let last_tool_call_end = text.rfind("</tool_call>");
-    let last_tool_response_start = text.rfind("<tool_response>");
-    let last_tool_response_end = text.rfind("</tool_response>");
-    
-    // We're inside tool_call if we have an opening tag after the last closing tag
-    let inside_tool_call = match (last_tool_call_start, last_tool_call_end) {
-        (Some(start), Some(end)) => start > end,
-        (Some(_), None) => true,
-        _ => false,
-    };
-    
-    // We're inside tool_response if we have an opening tag after the last closing tag
-    let inside_tool_response = match (last_tool_response_start, last_tool_response_end) {
-        (Some(start), Some(end)) => start > end,
-        (Some(_), None) => true,
-        _ => false,
-    };
-    
-    inside_tool_call || inside_tool_response
-}
 
 fn check_if_continuation_needed(text: &str) -> bool {
     // Extract all tool_response content and check if any contain JSON
