@@ -4,7 +4,7 @@
   <p align="center">
     <strong>A powerful, privacy-first AI chat application</strong>
     <br />
-    Built with Tauri, React, and OpenVINO for lightning-fast local AI inference
+    Built with Tauri, React, and OpenVINO Model Server(OVMS) for lightning-fast local AI inference
     <br />
     <br />
     <a href="#-quick-start"><strong>Get Started »</strong></a>
@@ -13,9 +13,9 @@
     ·
     <a href="#-screenshots">Screenshots</a>
     ·
-    <a href="https://github.com/DavidOzc/SparrowAI/issues">Report Bug</a>
+    <a href="https://github.com/zhengchy95/SparrowAI/issues">Report Bug</a>
     ·
-    <a href="https://github.com/DavidOzc/SparrowAI/issues">Request Feature</a>
+    <a href="https://github.com/zhengchy95/SparrowAI/issues">Request Feature</a>
   </p>
 
   <p align="center">
@@ -47,6 +47,7 @@ SparrowAI is a modern desktop application that brings powerful AI capabilities d
 - Multi-session chat management with persistent history
 - Customizable system prompts and generation parameters
 - Context-aware conversations with document upload support
+- MCP (Model Context Protocol) integration for external tool access
 
 ### 📚 **Document Intelligence (RAG)**
 
@@ -61,6 +62,7 @@ SparrowAI is a modern desktop application that brings powerful AI capabilities d
 - Automatic BGE model installation for RAG functionality
 - Smart model pre-selection based on OVMS status
 - Seamless model switching with configuration updates
+- MCP server management and configuration
 
 ### ⚡ **High-Performance Infrastructure**
 
@@ -95,7 +97,7 @@ Make sure you have the following installed:
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/zhengchy95/SparrowAI.git
+   git clone https://github.com/DavidOzc/SparrowAI.git
    cd SparrowAI
    ```
 
@@ -137,9 +139,9 @@ Make sure you have the following installed:
 ### Frontend Stack
 
 - **React 18** - Modern UI with hooks and concurrent features
-- **Material-UI v7** - Comprehensive component library
+- **Material-UI v7.2** - Comprehensive component library
 - **Zustand** - Lightweight state management
-- **Vite** - Lightning-fast development and builds
+- **Vite 6** - Lightning-fast development and builds
 
 ### Backend Stack
 
@@ -154,6 +156,7 @@ Make sure you have the following installed:
 - **BGE Embeddings** - Best-in-class text embeddings
 - **Sled Database** - High-performance vector storage
 - **Document Processing** - PDF, DOCX, XLSX support
+- **MCP Integration** - Model Context Protocol for external tools
 
 ## 📁 Project Structure
 
@@ -164,17 +167,27 @@ SparrowAI/
 │   │   ├── ChatPage.jsx    # Main chat interface
 │   │   ├── DocumentsPage.jsx # RAG document manager
 │   │   ├── ModelsPage.jsx   # Model browser
+│   │   ├── McpPage.jsx     # MCP server management
+│   │   ├── SettingsDialog.jsx # Application settings
 │   │   └── Sidebar.jsx     # Navigation sidebar
 │   ├── store/              # Zustand state stores
+│   │   ├── useAppStore.jsx # Application state
+│   │   └── useChatStore.jsx # Chat state
 │   └── hooks/              # Custom React hooks
 ├── src-tauri/              # Rust backend
 │   ├── src/
 │   │   ├── lib.rs          # Main application
 │   │   ├── ovms.rs         # OVMS integration
 │   │   ├── chat.rs         # Chat sessions
+│   │   ├── huggingface.rs  # HF Hub integration
+│   │   ├── mcp/            # MCP integration
+│   │   │   ├── client.rs   # MCP client
+│   │   │   ├── commands.rs # MCP commands
+│   │   │   └── config.rs   # MCP configuration
 │   │   └── rag/            # RAG pipeline
 │   │       ├── documents.rs
 │   │       ├── embeddings.rs
+│   │       ├── search.rs   # Vector search
 │   │       └── vector_store.rs
 ├── public/                 # Static assets
 └── README.md              # You are here!
@@ -331,9 +344,9 @@ Special thanks to these incredible projects that make SparrowAI possible:
   **Built with ❤️ by the SparrowAI team**
   
   <p>
-    <a href="https://github.com/DavidOzc/SparrowAI">⭐ Star on GitHub</a> •
-    <a href="https://github.com/DavidOzc/SparrowAI/issues">🐛 Report Issues</a> •
-    <a href="https://github.com/DavidOzc/SparrowAI/discussions">💬 Discussions</a>
+    <a href="https://github.com/zhengchy95/SparrowAI">⭐ Star on GitHub</a> •
+    <a href="https://github.com/zhengchy95/SparrowAI/issues">🐛 Report Issues</a> •
+    <a href="https://github.com/zhengchy95/SparrowAI/discussions">💬 Discussions</a>
   </p>
   
   <sub>Made possible by the open-source community 🌟</sub>
