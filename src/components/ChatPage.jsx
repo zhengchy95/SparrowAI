@@ -777,13 +777,16 @@ const ChatPage = () => {
                 <Box
                   component="pre"
                   sx={{
-                    backgroundColor: "grey.100",
+                    backgroundColor: (theme) =>
+                      theme.palette.mode === "dark" ? "grey.800" : "grey.100",
                     borderRadius: 1,
                     p: 1.5,
                     fontSize: "0.75rem",
                     fontFamily: "monospace",
                     overflow: "auto",
                     mb: 2,
+                    color: (theme) =>
+                      theme.palette.mode === "dark" ? "grey.100" : "inherit",
                   }}
                 >
                   {typeof toolCall.arguments === "string"
@@ -837,7 +840,10 @@ const ChatPage = () => {
           <Box
             component="pre"
             sx={{
-              backgroundColor: "grey.100",
+              backgroundColor: (theme) =>
+                theme.palette.mode === "dark" ? "grey.800" : "grey.100",
+              color: (theme) =>
+                theme.palette.mode === "dark" ? "grey.100" : "inherit",
               borderRadius: 1,
               p: 2,
               overflow: "auto",
@@ -859,7 +865,10 @@ const ChatPage = () => {
           <Box
             component="code"
             sx={{
-              backgroundColor: "grey.100",
+              backgroundColor: (theme) =>
+                theme.palette.mode === "dark" ? "grey.800" : "grey.100",
+              color: (theme) =>
+                theme.palette.mode === "dark" ? "grey.100" : "inherit",
               px: 0.5,
               py: 0.25,
               borderRadius: 0.5,
@@ -908,7 +917,10 @@ const ChatPage = () => {
           <Box
             component="code"
             sx={{
-              backgroundColor: "grey.100",
+              backgroundColor: (theme) =>
+                theme.palette.mode === "dark" ? "grey.800" : "grey.100",
+              color: (theme) =>
+                theme.palette.mode === "dark" ? "grey.100" : "inherit",
               px: 0.5,
               py: 0.25,
               borderRadius: 0.5,
