@@ -1135,30 +1135,6 @@ fn check_if_continuation_needed(text: &str) -> bool {
     text.contains("<tool_response>")
 }
 
-fn is_json_like(text: &str) -> bool {
-    let trimmed = text.trim();
-
-    // Empty or very short strings are not JSON
-    if trimmed.len() < 2 {
-        return false;
-    }
-
-    // Handle escaped characters in the text (convert \n to actual newlines and \" to ")
-    let normalized = trimmed.replace("\\n", "\n").replace("\\\"", "\"");
-
-    // Try to parse as JSON to ensure it's actually valid
-    if let Ok(_) = serde_json::from_str::<serde_json::Value>(&normalized) {
-        return true;
-    }
-
-    // Also try parsing the original trimmed text in case it's already proper JSON
-    if let Ok(_) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        return true;
-    }
-
-    false
-}
-
 fn truncate_content(content: &str, max_length: usize) -> String {
     if content.len() <= max_length {
         content.to_string()

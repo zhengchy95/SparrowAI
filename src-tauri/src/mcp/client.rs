@@ -1,12 +1,17 @@
-use super::config::{McpConfig, McpServerConfig, TransportType};
-use tracing::{info, warn, debug};
-use rmcp::{ServiceExt, transport::{TokioChildProcess, SseClientTransport, StreamableHttpClientTransport}, service::RunningService, RoleClient};
+use super::config::{ McpConfig, McpServerConfig, TransportType };
+use tracing::{ info, warn, debug };
+use rmcp::{
+    ServiceExt,
+    transport::{ TokioChildProcess, SseClientTransport, StreamableHttpClientTransport },
+    service::RunningService,
+    RoleClient,
+};
 use rmcp::model::CallToolRequestParam;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use std::collections::HashMap;
 use std::process::Stdio;
 use tokio::process::Command;
-use async_openai::types::{ChatCompletionTool, ChatCompletionToolType, FunctionObject};
+use async_openai::types::{ ChatCompletionTool, ChatCompletionToolType, FunctionObject };
 use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,10 +34,14 @@ impl McpManager {
             clients: HashMap::new(),
         }
     }
-    
-    pub async fn connect_to_server(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+
+    pub async fn connect_to_server(
+        &mut self,
+        name: &str
+    ) -> Result<(), Box<dyn std::error::Error>> {
         info!(server_name = %name, "Attempting to connect to MCP server");
-        let server_config = self.config.get_server(name)
+        let server_config = self.config
+            .get_server(name)
             .ok_or(format!("Server '{}' not found in configuration", name))?;
 
         // Validate configuration
@@ -45,21 +54,25 @@ impl McpManager {
             TransportType::Stdio => {
                 let command = server_config.command.as_ref().unwrap();
                 let args = server_config.args.as_deref().unwrap_or(&[]);
-                
+
                 info!(command = %command, args = ?args, "Starting MCP server via stdio");
-                
+
                 // Create the command - on Windows, we might need to handle .cmd extensions
-                let mut cmd = if cfg!(target_os = "windows") && !command.ends_with(".exe") && !command.ends_with(".cmd") {
+                let mut cmd = if
+                    cfg!(target_os = "windows") &&
+                    !command.ends_with(".exe") &&
+                    !command.ends_with(".cmd")
+                {
                     // Try to find the command with .cmd extension first
                     let cmd_with_extension = format!("{}.cmd", command);
                     let mut test_cmd = Command::new(&cmd_with_extension);
                     test_cmd.args(&["--version"]);
-                    
+
                     match test_cmd.output().await {
                         Ok(_) => {
                             info!(original_command = %command, resolved_command = %cmd_with_extension, "Resolved Windows command with .cmd extension");
                             Command::new(cmd_with_extension)
-                        },
+                        }
                         Err(_) => {
                             info!(command = %command, "Using original command without extension resolution");
                             Command::new(command)
@@ -68,105 +81,105 @@ impl McpManager {
                 } else {
                     Command::new(command)
                 };
-                
+
                 cmd.args(args);
-                cmd.stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped());
-                
+                cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+
                 // Hide console window on Windows to prevent terminal popup
                 #[cfg(target_os = "windows")]
                 {
-                    use std::os::windows::process::CommandExt;
                     const CREATE_NO_WINDOW: u32 = 0x08000000;
                     cmd.creation_flags(CREATE_NO_WINDOW);
                 }
-                    
+
                 // Ensure PATH is inherited from the current environment on Windows
                 if cfg!(target_os = "windows") {
                     if let Ok(path_var) = std::env::var("PATH") {
                         cmd.env("PATH", path_var);
                     }
                 }
-                
+
                 // Set environment variables if provided
                 if let Some(env_vars) = &server_config.env {
                     for (key, value) in env_vars {
                         cmd.env(key, value);
                     }
                 }
-                
+
                 // Create transport and connect
                 let transport = TokioChildProcess::new(cmd).map_err(|e| {
                     warn!(command = %command, args = ?args, error = %e, "Failed to create TokioChildProcess");
                     format!("Failed to start command '{}': {}", command, e)
                 })?;
                 ().serve(transport).await?
-            },
+            }
             TransportType::Sse => {
                 let url = server_config.url.as_ref().unwrap();
                 info!(url = %url, "Connecting to MCP server via SSE");
-                
+
                 let transport = SseClientTransport::start(url.clone()).await?;
                 ().serve(transport).await?
-            },
+            }
             TransportType::StreamableHttp => {
                 let url = server_config.url.as_ref().unwrap();
                 info!(url = %url, "Connecting to MCP server via Streamable HTTP");
-                
+
                 let transport = StreamableHttpClientTransport::from_uri(url.clone());
                 ().serve(transport).await?
-            },
+            }
         };
-        
+
         self.clients.insert(name.to_string(), client);
         info!(server_name = %name, "Successfully connected to MCP server");
         Ok(())
     }
-    
+
     pub fn disconnect_from_server(&mut self, name: &str) {
         info!(server_name = %name, "Disconnecting from MCP server");
         self.clients.remove(name);
     }
-    
-    
-    pub async fn fetch_tools(&self, server_name: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        let client = self.clients.get(server_name)
+
+    pub async fn fetch_tools(
+        &self,
+        server_name: &str
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let client = self.clients
+            .get(server_name)
             .ok_or(format!("Server '{}' not connected", server_name))?;
-            
+
         debug!(server_name = %server_name, "Fetching tools from MCP server");
         let tools_response = client.list_tools(Default::default()).await?;
-        
+
         let tool_names: Vec<String> = tools_response.tools
             .iter()
             .map(|tool| tool.name.to_string())
             .collect();
-            
+
         info!(server_name = %server_name, tool_count = tool_names.len(), tools = ?tool_names, "Found tools from MCP server");
         Ok(tool_names)
     }
-    
-    
+
     pub fn add_server(&mut self, name: String, config: McpServerConfig) {
         self.config.add_server(name, config);
     }
-    
+
     pub fn remove_server(&mut self, name: &str) -> Option<McpServerConfig> {
         self.disconnect_from_server(name);
         self.config.remove_server(name)
     }
-    
+
     pub fn get_config(&self) -> &McpConfig {
         &self.config
     }
-    
-    
-    pub async fn get_all_tools_for_openai(&self) -> Result<Vec<ChatCompletionTool>, Box<dyn std::error::Error>> {
+
+    pub async fn get_all_tools_for_openai(
+        &self
+    ) -> Result<Vec<ChatCompletionTool>, Box<dyn std::error::Error>> {
         let mut all_tools = Vec::new();
-        
+
         for (server_name, client) in &self.clients {
             debug!(server_name = %server_name, "Getting tools from server");
-            
+
             // Get actual tools from the MCP server
             match client.list_tools(Default::default()).await {
                 Ok(tools_response) => {
@@ -176,8 +189,20 @@ impl McpManager {
                             r#type: ChatCompletionToolType::Function,
                             function: FunctionObject {
                                 name: format!("{}_{}", server_name, tool.name), // Prefix with server name to avoid conflicts
-                                description: tool.description.map(|d| d.to_string()).or_else(|| Some(format!("Tool '{}' from MCP server '{}'", tool.name, server_name))),
-                                parameters: Some(serde_json::Value::Object(tool.input_schema.as_ref().clone())),
+                                description: tool.description
+                                    .map(|d| d.to_string())
+                                    .or_else(||
+                                        Some(
+                                            format!(
+                                                "Tool '{}' from MCP server '{}'",
+                                                tool.name,
+                                                server_name
+                                            )
+                                        )
+                                    ),
+                                parameters: Some(
+                                    serde_json::Value::Object(tool.input_schema.as_ref().clone())
+                                ),
                                 strict: Some(false),
                             },
                         };
@@ -190,42 +215,43 @@ impl McpManager {
                 }
             }
         }
-        
+
         info!(tool_count = all_tools.len(), "Total MCP tools available");
         Ok(all_tools)
     }
-    
+
     pub async fn call_mcp_tool(
         &self,
         tool_name: &str,
-        arguments: Option<serde_json::Map<String, Value>>,
+        arguments: Option<serde_json::Map<String, Value>>
     ) -> Result<String, Box<dyn std::error::Error>> {
         // Parse server name and actual tool name from the prefixed name
         let parts: Vec<&str> = tool_name.splitn(2, '_').collect();
         if parts.len() != 2 {
             return Err("Invalid tool name format. Expected: server_toolname".into());
         }
-        
+
         let server_name = parts[0];
         let actual_tool_name = parts[1];
-        
-        let client = self.clients.get(server_name)
+
+        let client = self.clients
+            .get(server_name)
             .ok_or(format!("Server '{}' not connected", server_name))?;
-        
+
         info!(tool_name = %actual_tool_name, server_name = %server_name, arguments = ?arguments, "Calling MCP tool");
-        
+
         // Call the actual MCP tool
         let result = client.call_tool(CallToolRequestParam {
             name: actual_tool_name.to_string().into(),
             arguments,
         }).await?;
-        
+
         // Convert MCP result to string
         let result_str = if let Some(content_vec) = result.content.as_ref() {
             if !content_vec.is_empty() {
                 // Extract text content from MCP response (using debug format for now and parse)
                 let debug_str = format!("{:#?}", content_vec);
-                
+
                 // Try to extract text field from the debug output
                 let text_lines: Vec<&str> = debug_str
                     .lines()
@@ -236,7 +262,7 @@ impl McpManager {
                             if let Some(start) = trimmed.find('"') {
                                 if let Some(end) = trimmed.rfind('"') {
                                     if end > start {
-                                        return Some(&trimmed[start+1..end]);
+                                        return Some(&trimmed[start + 1..end]);
                                     }
                                 }
                             }
@@ -244,7 +270,7 @@ impl McpManager {
                         None
                     })
                     .collect();
-                
+
                 if text_lines.is_empty() {
                     // Fallback to debug format if we can't parse
                     debug_str
@@ -257,7 +283,7 @@ impl McpManager {
         } else {
             "No content returned from tool".to_string()
         };
-        
+
         debug!(tool_name = %actual_tool_name, result = %result_str, "MCP tool execution completed");
         Ok(result_str)
     }
