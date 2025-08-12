@@ -73,6 +73,14 @@ impl McpManager {
                 cmd.stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
+                
+                // Hide console window on Windows to prevent terminal popup
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NO_WINDOW: u32 = 0x08000000;
+                    cmd.creation_flags(CREATE_NO_WINDOW);
+                }
                     
                 // Ensure PATH is inherited from the current environment on Windows
                 if cfg!(target_os = "windows") {
