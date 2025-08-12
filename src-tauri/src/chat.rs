@@ -8,7 +8,7 @@ use uuid::Uuid;
 use async_openai::types::ChatCompletionRequestUserMessageArgs;
 use async_openai::types::ChatCompletionRequestSystemMessageArgs;
 use async_openai::types::ChatCompletionRequestAssistantMessageArgs;
-// Removed unused tool choice imports since tools are now in system message
+use async_openai::types::ChatCompletionToolChoiceOption;
 use async_openai::{ types::CreateChatCompletionRequestArgs, Client };
 use async_openai::{ config::OpenAIConfig };
 use futures::StreamExt;
@@ -381,89 +381,24 @@ pub async fn chat_with_loaded_model_streaming(
         .with_api_base("http://localhost:1114/v3");
     let client = Client::with_config(config);
 
-    // Get MCP tools info for system message
+    // Get MCP tools for proper OpenAI tool calling
     let mcp_tools = match mcp::get_all_mcp_tools_for_chat(app.clone()).await {
         Ok(tools) => {
-            debug!("Successfully loaded {} MCP tools for system message", tools.len());
+            debug!("Successfully loaded {} MCP tools", tools.len());
             tools
         }
         Err(e) => {
-            warn!("Failed to load MCP tools for system message: {}", e);
+            warn!("Failed to load MCP tools: {}", e);
             Vec::new()
         }
     };
 
-    let tools_info = if !mcp_tools.is_empty() {
-        debug!("Processing MCP tools for system message...");
-
-        // Generate tool descriptions in simple text format for the custom template
-        let tool_descs: Vec<String> = mcp_tools
-            .iter()
-            .enumerate()
-            .map(|(i, tool)| {
-                debug!("Processing tool {}: {}", i, tool.function.name);
-                let params_str = match &tool.function.parameters {
-                    Some(params) => serde_json::to_string_pretty(params).unwrap_or_default(),
-                    None => "{}".to_string(),
-                };
-
-                format!(
-                    "{}({}) - {}",
-                    tool.function.name,
-                    params_str,
-                    tool.function.description.as_ref().unwrap_or(&"".to_string())
-                )
-            })
-            .collect();
-
-        let tool_descs_text = tool_descs.join("\n");
-        let formatted_tools =
-            format!(r#"
-
-# Tools
-
-You may call one or more functions to assist with the user query.
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-{}
-</tools>
-
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
-{{"name": <function-name>, "arguments": <args-json-object>}}
-</tool_call>"#, tool_descs_text);
-
-        debug!("Generated custom tool template: {} characters", formatted_tools.len());
-        formatted_tools
-    } else {
-        debug!("No MCP tools available for system message");
-        "".to_string()
-    };
-
-    let base_system_message = system_prompt.unwrap_or_else(|| {
-        "You are a helpful AI assistant with access to various functions/tools. 
-        You MUST use the available tools when they are relevant to answer the user's request.
-
-        IMPORTANT RULES:
-        1. NEVER make up or guess information that could be obtained from a function call
-        2. If you have a tool that can answer the question, USE IT
-
-        Available tools should be called whenever relevant to provide accurate, up-to-date information.".to_string()
+    // Simple system message without tool descriptions
+    let system_message = system_prompt.unwrap_or_else(|| {
+        "You are a helpful AI assistant. Use the available tools when they are relevant to answer the user's request.".to_string()
     });
 
-    // Always append tools info to system message (whether custom or default)
-    let system_message = format!("{}{}", base_system_message, tools_info);
-
-    debug!("Message: {}", system_message);
-    // Log what we're including
-    debug!("System message length: {} chars", system_message.len());
-    debug!("Tools info length: {} chars", tools_info.len());
-    if !tools_info.is_empty() {
-        debug!("Including tools info in system message");
-    } else {
-        debug!("No tools info to include");
-    }
+    debug!("System message: {}", system_message);
 
     let mut messages = vec![
         ChatCompletionRequestSystemMessageArgs::default()
@@ -553,6 +488,15 @@ For each function call, return a json object with function name and arguments wi
         request_builder.max_completion_tokens(max_completion_tokens);
     }
 
+    // Add MCP tools using OpenAI tools format
+    if !mcp_tools.is_empty() {
+        debug!("Adding {} tools to request", mcp_tools.len());
+        request_builder.tools(mcp_tools.clone());
+
+        // Use auto tool choice - let the model decide when to use tools
+        request_builder.tool_choice(ChatCompletionToolChoiceOption::Auto);
+    }
+
     // Commented out: Add MCP tools using modern tools format
     /*
     match mcp::get_all_mcp_tools_for_chat(app.clone()).await {
@@ -612,7 +556,7 @@ For each function call, return a json object with function name and arguments wi
     */
 
     // Tools info is now in system message instead
-    debug!("Tools info included in system message instead of request tools array");
+    // debug!("Tools info included in system message instead of request tools array");
 
     let request = request_builder
         .build()
@@ -627,6 +571,7 @@ For each function call, return a json object with function name and arguments wi
                 if let Some(system_msg) = messages_array.get(0) {
                     if let Some(content) = system_msg.get("content") {
                         if let Some(content_str) = content.as_str() {
+                            // Add this line to extract the string
                             if
                                 content_str.contains("<tools>") ||
                                 content_str.contains("Available functions:")
