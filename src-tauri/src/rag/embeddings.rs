@@ -10,13 +10,12 @@ impl EmbeddingService {
     pub fn new() -> Self {
         let config = OpenAIConfig::new()
             .with_api_key("unused")
-            .with_api_base("http://localhost:8000/v3"); // Your OVMS endpoint
+            .with_api_base("http://localhost:1114/v3"); // Your OVMS endpoint
 
         Self {
             client: Client::with_config(config),
         }
     }
-
 
     pub async fn create_embeddings(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
         if texts.is_empty() {

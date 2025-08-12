@@ -7,7 +7,7 @@ use zip::ZipArchive;
 use serde_json::{ json, Value };
 use serde::{ Deserialize, Serialize };
 use tauri::AppHandle;
-use tracing::{info, warn, error, debug};
+use tracing::{ info, warn, error, debug };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OvmsStatus {
@@ -556,7 +556,7 @@ pub async fn reload_ovms_config() -> Result<String, String> {
     let client = reqwest::Client::new();
 
     let response = client
-        .post("http://localhost:8000/v1/config/reload")
+        .post("http://localhost:1114/v1/config/reload")
         .send().await
         .map_err(|e| format!("Failed to send reload request: {}", e))?;
 
@@ -615,7 +615,7 @@ pub async fn start_ovms_server(app_handle: AppHandle) -> Result<String, String> 
         "--config_path",
         &config_path.to_string_lossy(),
         "--rest_port",
-        "8000",
+        "1114",
         "--log_level",
         "INFO",
     ])
@@ -670,7 +670,7 @@ pub async fn start_ovms_server(app_handle: AppHandle) -> Result<String, String> 
                 *process_guard = Some(child);
             } // Guard is dropped here
 
-            info!("OVMS server started on port 8000");
+            info!("OVMS server started on port 1114");
 
             Ok("OVMS server started successfully.".to_string())
         }
@@ -832,7 +832,7 @@ pub async fn check_ovms_status() -> Result<OvmsStatus, String> {
     let client = reqwest::Client::new();
 
     let response = client
-        .get("http://localhost:8000/v1/config")
+        .get("http://localhost:1114/v1/config")
         .send().await
         .map_err(|e| format!("Failed to connect to OVMS server: {}", e))?;
 
@@ -896,7 +896,7 @@ pub async fn get_ovms_model_metadata(model_name: String) -> Result<String, Strin
     let client = reqwest::Client::new();
 
     // Try to get model metadata for more detailed error information
-    let metadata_url = format!("http://localhost:8000/v1/models/{}/metadata", model_name);
+    let metadata_url = format!("http://localhost:1114/v1/models/{}/metadata", model_name);
     let response = client
         .get(&metadata_url)
         .send().await
@@ -909,7 +909,7 @@ pub async fn get_ovms_model_metadata(model_name: String) -> Result<String, Strin
         Ok(body)
     } else {
         // If metadata fails, try the model status endpoint
-        let status_url = format!("http://localhost:8000/v1/models/{}", model_name);
+        let status_url = format!("http://localhost:1114/v1/models/{}", model_name);
         let status_response = client
             .get(&status_url)
             .send().await

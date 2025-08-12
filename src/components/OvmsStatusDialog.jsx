@@ -117,7 +117,7 @@ const OvmsStatusDialog = ({ open, onClose }) => {
                 <strong>Error:</strong> {statusError}
               </Typography>
               <Typography variant="body2" sx={{ mt: 1 }}>
-                Make sure OVMS server is running on localhost:8000
+                Make sure OVMS server is running on localhost:1114
               </Typography>
             </Alert>
           )}

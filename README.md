@@ -266,7 +266,7 @@ We welcome contributions! Please:
 ### OVMS Fails to Start
 
 - Ensure Windows Defender/antivirus allows the app
-- Check ports 8000-8001 are available
+- Check ports 1114-1115 are available
 - Verify sufficient disk space (5GB+ recommended)
 
 ### Model Download Issues

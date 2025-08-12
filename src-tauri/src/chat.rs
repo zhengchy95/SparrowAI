@@ -1,5 +1,5 @@
 use serde::{ Deserialize, Serialize };
-use tracing::{ warn, error, debug };
+use tracing::{ warn, error, debug, info }; // Add 'info' to the tracing import
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
@@ -378,7 +378,7 @@ pub async fn chat_with_loaded_model_streaming(
 ) -> Result<String, String> {
     let config = OpenAIConfig::new()
         .with_api_key("unused")
-        .with_api_base("http://localhost:8000/v3");
+        .with_api_base("http://localhost:1114/v3");
     let client = Client::with_config(config);
 
     // Get MCP tools info for system message
@@ -857,6 +857,28 @@ For each function call, return a json object with function name and arguments wi
         "finished": true
     })
     );
+
+    // Log the complete response before breaking
+    debug!(
+        message_length = full_response.len(),
+        session_id = ?session_id,
+        model = %model_name,
+        "Chat completion finished"
+    );
+
+    // Log full response (truncated for readability)
+    if full_response.len() > 500 {
+        info!(
+            response_preview = %&full_response[..500],
+            total_length = full_response.len(),
+            "Full chat response (truncated)"
+        );
+    } else {
+        info!(
+            full_response = %full_response,
+            "Complete chat response"
+        );
+    }
 
     Ok(full_response)
 }

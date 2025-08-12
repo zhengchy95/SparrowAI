@@ -15,6 +15,10 @@ import {
   FormControl,
   InputLabel,
   CircularProgress,
+  Chip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import {
   Send as SendIcon,
@@ -23,10 +27,16 @@ import {
   Memory as LoadIcon,
   Stop as StopIcon,
   Info as InfoIcon,
+  Build as ToolIcon,
+  ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css"; // Import KaTeX CSS
 import useAppStore from "../store/useAppStore";
 import useChatStore from "../store/useChatStore";
 
@@ -44,8 +54,14 @@ let globalStreamingTimeout = null;
 let globalStreamingStartTime = null;
 
 const ChatPage = () => {
-  const { downloadedModels, settings, showNotification, isOvmsRunning, loadedModel, setLoadedModel } =
-    useAppStore();
+  const {
+    downloadedModels,
+    settings,
+    showNotification,
+    isOvmsRunning,
+    loadedModel,
+    setLoadedModel,
+  } = useAppStore();
   const {
     activeChatSessionId,
     currentChatMessages,
@@ -75,7 +91,7 @@ const ChatPage = () => {
   useEffect(() => {
     const initialize = async () => {
       await setupEventListeners();
-      
+
       // Set the selected model from the loaded model state
       if (loadedModel && !selectedModel) {
         console.log("Pre-selecting loaded model from store:", loadedModel);
@@ -103,7 +119,7 @@ const ChatPage = () => {
             // Sort models to ensure consistency, then get the first one
             const sortedModels = ovmsStatus.loaded_models.sort();
             const firstLoadedModel = `OpenVINO/${sortedModels[0]}`;
-            
+
             // Check if this model is also downloaded
             if (downloadedModels.has(firstLoadedModel)) {
               console.log("Post-init pre-selecting model:", firstLoadedModel);
@@ -146,19 +162,32 @@ const ChatPage = () => {
       if (temporarySession && temporarySession.id === activeChatSessionId) {
         const messagesFromTemp = temporarySession.messages || [];
         setCurrentChatMessages(messagesFromTemp);
-        
+
         // Pre-select the model from the temporary session if available
-        if (temporarySession.model_id && temporarySession.model_id !== selectedModel) {
-          console.log("Pre-selecting model from session:", temporarySession.model_id);
+        if (
+          temporarySession.model_id &&
+          temporarySession.model_id !== selectedModel
+        ) {
+          console.log(
+            "Pre-selecting model from session:",
+            temporarySession.model_id
+          );
           setSelectedModel(temporarySession.model_id);
         }
       } else {
         loadChatSessionMessages(activeChatSessionId);
-        
+
         // Also try to pre-select model from persisted session
         const persistedSession = chatSessions[activeChatSessionId];
-        if (persistedSession && persistedSession.model_id && persistedSession.model_id !== selectedModel) {
-          console.log("Pre-selecting model from persisted session:", persistedSession.model_id);
+        if (
+          persistedSession &&
+          persistedSession.model_id &&
+          persistedSession.model_id !== selectedModel
+        ) {
+          console.log(
+            "Pre-selecting model from persisted session:",
+            persistedSession.model_id
+          );
           setSelectedModel(persistedSession.model_id);
         }
       }
@@ -403,7 +432,7 @@ const ChatPage = () => {
           }`,
           "success"
         );
-        
+
         // Update global loaded model state
         setLoadedModel(newModelId);
       } else {
@@ -447,7 +476,7 @@ const ChatPage = () => {
           }`,
           "success"
         );
-        
+
         // Update global loaded model state
         setLoadedModel(newModelId);
       }
@@ -461,20 +490,23 @@ const ChatPage = () => {
     } finally {
       setIsLoadingModel(false);
     }
-    
+
     // Update the active session with the selected model
     try {
       if (activeChatSessionId) {
         if (temporarySession && temporarySession.id === activeChatSessionId) {
           // Update temporary session
-          const updatedTempSession = { ...temporarySession, model_id: newModelId };
+          const updatedTempSession = {
+            ...temporarySession,
+            model_id: newModelId,
+          };
           setTemporarySession(updatedTempSession);
         } else {
           // Update persisted session
           await invoke("update_chat_session", {
             sessionId: activeChatSessionId,
             title: null, // Don't change title
-            modelId: newModelId
+            modelId: newModelId,
           });
           // Also update local store
           updateChatSession(activeChatSessionId, { model_id: newModelId });
@@ -658,6 +690,326 @@ const ChatPage = () => {
     );
   }
 
+  // Add a function to process tool calls in the message content
+  const processToolCalls = (content) => {
+    // Regular expressions to match tool calls and responses
+    const toolCallRegex = /<tool_call>([\s\S]*?)<\/tool_call>/g;
+    const toolResponseRegex = /<tool_response>([\s\S]*?)<\/tool_response>/g;
+
+    let processedContent = content;
+    const toolCalls = [];
+
+    // Extract tool calls
+    let match;
+    while ((match = toolCallRegex.exec(content)) !== null) {
+      const toolCallContent = match[1].trim();
+      try {
+        const toolData = JSON.parse(toolCallContent);
+        toolCalls.push({
+          name: toolData.name,
+          arguments: toolData.arguments,
+          fullMatch: match[0],
+        });
+      } catch (e) {
+        console.warn("Failed to parse tool call JSON:", toolCallContent);
+      }
+    }
+
+    // Extract tool responses
+    const toolResponses = [];
+    while ((match = toolResponseRegex.exec(content)) !== null) {
+      toolResponses.push({
+        content: match[1].trim(),
+        fullMatch: match[0],
+      });
+    }
+
+    // Remove tool calls and responses from content
+    processedContent = processedContent.replace(toolCallRegex, "");
+    processedContent = processedContent.replace(toolResponseRegex, "");
+
+    return {
+      content: processedContent.trim(),
+      toolCalls,
+      toolResponses,
+    };
+  };
+
+  // Component for rendering tool calls
+  const ToolCallDisplay = ({ toolCalls, toolResponses }) => {
+    if (toolCalls.length === 0) return null;
+
+    return (
+      <Box sx={{ my: 2 }}>
+        {toolCalls.map((toolCall, index) => (
+          <Accordion key={index} sx={{ mb: 1 }}>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                backgroundColor: "action.hover",
+                borderRadius: 1,
+                "&.Mui-expanded": {
+                  minHeight: 48,
+                },
+                "& .MuiAccordionSummary-content": {
+                  alignItems: "center",
+                },
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <ToolIcon sx={{ fontSize: 20, color: "primary.main" }} />
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  Calling tool: {toolCall.name}
+                </Typography>
+                <Chip
+                  label="Tool Call"
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                  Arguments:
+                </Typography>
+                <Box
+                  component="pre"
+                  sx={{
+                    backgroundColor: "grey.100",
+                    borderRadius: 1,
+                    p: 1.5,
+                    fontSize: "0.75rem",
+                    fontFamily: "monospace",
+                    overflow: "auto",
+                    mb: 2,
+                  }}
+                >
+                  {typeof toolCall.arguments === "string"
+                    ? toolCall.arguments
+                    : JSON.stringify(toolCall.arguments, null, 2)}
+                </Box>
+
+                {toolResponses[index] && (
+                  <>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ mb: 1, fontWeight: 600 }}
+                    >
+                      Response:
+                    </Typography>
+                    <Box
+                      sx={{
+                        backgroundColor: "success.light",
+                        borderRadius: 1,
+                        p: 1.5,
+                        fontSize: "0.875rem",
+                        color: "success.contrastText",
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{ whiteSpace: "pre-wrap" }}
+                      >
+                        {toolResponses[index].content}
+                      </Typography>
+                    </Box>
+                  </>
+                )}
+              </Box>
+            </AccordionDetails>
+          </Accordion>
+        ))}
+      </Box>
+    );
+  };
+
+  // Custom markdown components for styling
+  const markdownComponents = {
+    // Code blocks and inline code
+    code: ({ node, inline, className, children, ...props }) => {
+      const match = /language-(\w+)/.exec(className || "");
+
+      if (!inline && match !== null) {
+        // Block code (triple backticks)
+        return (
+          <Box
+            component="pre"
+            sx={{
+              backgroundColor: "grey.100",
+              borderRadius: 1,
+              p: 2,
+              overflow: "auto",
+              fontFamily: "monospace",
+              fontSize: "0.875rem",
+              my: 1,
+              wordBreak: "break-all",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            <code className={className} {...props}>
+              {children}
+            </code>
+          </Box>
+        );
+      } else if (!inline && match === null) {
+        // Block code (triple backticks)
+        return (
+          <Box
+            component="code"
+            sx={{
+              backgroundColor: "grey.100",
+              px: 0.5,
+              py: 0.25,
+              borderRadius: 0.5,
+              fontFamily: "monospace",
+              fontSize: "0.875rem",
+              wordBreak: "break-word",
+              whiteSpace: "normal",
+            }}
+            {...props}
+          >
+            {children}
+          </Box>
+        );
+      } else {
+        // For inline code, be much more restrictive about what gets styled
+        const content = String(children).replace(/\n$/, "");
+
+        // Don't style as code if:
+        // 1. Contains spaces AND is not a clear code pattern
+        // 2. Is a common filename without clear code context
+        // 3. Is regular prose
+        const hasSpaces = content.includes(" ");
+        const isFilename = /^[a-zA-Z0-9_.-]+\.[a-zA-Z]{2,4}$/.test(content);
+        const isCodePattern =
+          content.includes("()") ||
+          content.includes("{}") ||
+          content.includes("[]") ||
+          content.includes("=>") ||
+          content.includes("::") ||
+          /^[A-Z_][A-Z0-9_]*$/.test(content) || // CONSTANTS
+          /^\$[a-zA-Z_]/.test(content) || // variables
+          (content.startsWith("/") && content.includes("/")); // paths
+
+        // If it has spaces and isn't a clear code pattern, render as plain text
+        if (hasSpaces && !isCodePattern) {
+          return <span>{children}</span>;
+        }
+
+        // If it's just a simple filename mentioned in text, render as plain text
+        if (isFilename && !isCodePattern) {
+          return <span>{children}</span>;
+        }
+
+        // Style as code for everything else
+        return (
+          <Box
+            component="code"
+            sx={{
+              backgroundColor: "grey.100",
+              px: 0.5,
+              py: 0.25,
+              borderRadius: 0.5,
+              fontFamily: "monospace",
+              fontSize: "0.875rem",
+              wordBreak: "break-word",
+              whiteSpace: "normal",
+            }}
+            {...props}
+          >
+            {children}
+          </Box>
+        );
+      }
+    },
+
+    // Paragraphs with word wrapping
+    p: ({ children }) => (
+      <Typography
+        component="p"
+        sx={{
+          mb: 1,
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {children}
+      </Typography>
+    ),
+
+    // Blockquotes
+    blockquote: ({ children }) => (
+      <Box
+        sx={{
+          borderLeft: 4,
+          borderColor: "primary.main",
+          backgroundColor: "grey.50",
+          pl: 2,
+          py: 1,
+          my: 1,
+          fontStyle: "italic",
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
+        }}
+      >
+        {children}
+      </Box>
+    ),
+
+    // Tables with horizontal scroll
+    table: ({ children }) => (
+      <Box sx={{ overflow: "auto", my: 2, maxWidth: "100%" }}>
+        <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
+          {children}
+        </table>
+      </Box>
+    ),
+    th: ({ children }) => (
+      <th
+        style={{
+          border: "1px solid #ddd",
+          padding: "8px",
+          backgroundColor: "#f5f5f5",
+          textAlign: "left",
+          wordBreak: "break-word",
+        }}
+      >
+        {children}
+      </th>
+    ),
+    td: ({ children }) => (
+      <td
+        style={{
+          border: "1px solid #ddd",
+          padding: "8px",
+          wordBreak: "break-word",
+        }}
+      >
+        {children}
+      </td>
+    ),
+
+    // Lists with proper wrapping
+    ul: ({ children }) => (
+      <ul style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>
+        {children}
+      </ul>
+    ),
+    ol: ({ children }) => (
+      <ol style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>
+        {children}
+      </ol>
+    ),
+    li: ({ children }) => (
+      <li style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>
+        {children}
+      </li>
+    ),
+  };
+
   return (
     <Box
       sx={{
@@ -716,50 +1068,108 @@ const ChatPage = () => {
             ) : (
               <List sx={{ p: 0 }}>
                 {Array.isArray(currentChatMessages)
-                  ? currentChatMessages.map((message, index) => (
-                      <ListItem
-                        key={message.id || index}
-                        sx={{ px: 0, py: 1, alignItems: "flex-start" }}
-                      >
-                        <Avatar
-                          sx={{
-                            mr: 2,
-                            bgcolor:
-                              message.role === "user"
-                                ? "primary.main"
-                                : "secondary.main",
-                          }}
+                  ? currentChatMessages.map((message, index) => {
+                      // Process tool calls for assistant messages
+                      const processedMessage =
+                        message.role === "assistant"
+                          ? processToolCalls(message.content)
+                          : {
+                              content: message.content,
+                              toolCalls: [],
+                              toolResponses: [],
+                            };
+
+                      return (
+                        <ListItem
+                          key={message.id || index}
+                          sx={{ px: 0, py: 1, alignItems: "flex-start" }}
                         >
-                          {message.role === "user" ? (
-                            <PersonIcon />
-                          ) : (
-                            <BotIcon />
-                          )}
-                        </Avatar>
-                        <Box sx={{ flexGrow: 1 }}>
-                          <Typography
-                            variant="body1"
+                          <Avatar
                             sx={{
-                              color: message.isError ? "error.main" : "inherit",
-                              fontStyle: message.isStreaming
-                                ? "italic"
-                                : "normal",
+                              mr: 2,
+                              bgcolor:
+                                message.role === "user"
+                                  ? "primary.main"
+                                  : "secondary.main",
                             }}
                           >
-                            {message.content}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {message.tokens_per_second
-                              ? `${message.tokens_per_second.toFixed(
-                                  1
-                                )} tokens/sec`
-                              : new Date(
-                                  message.timestamp
-                                ).toLocaleTimeString()}
-                          </Typography>
-                        </Box>
-                      </ListItem>
-                    ))
+                            {message.role === "user" ? (
+                              <PersonIcon />
+                            ) : (
+                              <BotIcon />
+                            )}
+                          </Avatar>
+                          <Box sx={{ flexGrow: 1 }}>
+                            {/* Render tool calls if present */}
+                            {processedMessage.toolCalls.length > 0 && (
+                              <ToolCallDisplay
+                                toolCalls={processedMessage.toolCalls}
+                                toolResponses={processedMessage.toolResponses}
+                              />
+                            )}
+
+                            {/* Render the main message content */}
+                            {processedMessage.content &&
+                              (message.role === "assistant" ? (
+                                <Box
+                                  sx={{
+                                    overflow: "hidden",
+                                    wordBreak: "break-word",
+                                    overflowWrap: "break-word",
+                                    maxWidth: "100%",
+                                  }}
+                                >
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkMath]}
+                                    rehypePlugins={[rehypeKatex]}
+                                    components={markdownComponents}
+                                    style={{
+                                      color: message.isError
+                                        ? "error.main"
+                                        : "inherit",
+                                      fontStyle: message.isStreaming
+                                        ? "italic"
+                                        : "normal",
+                                    }}
+                                  >
+                                    {processedMessage.content}
+                                  </ReactMarkdown>
+                                </Box>
+                              ) : (
+                                <Typography
+                                  variant="body1"
+                                  sx={{
+                                    color: message.isError
+                                      ? "error.main"
+                                      : "inherit",
+                                    fontStyle: message.isStreaming
+                                      ? "italic"
+                                      : "normal",
+                                    whiteSpace: "pre-wrap",
+                                    wordBreak: "break-word",
+                                    overflowWrap: "break-word",
+                                  }}
+                                >
+                                  {processedMessage.content}
+                                </Typography>
+                              ))}
+
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {message.tokens_per_second
+                                ? `${message.tokens_per_second.toFixed(
+                                    1
+                                  )} tokens/sec`
+                                : new Date(
+                                    message.timestamp
+                                  ).toLocaleTimeString()}
+                            </Typography>
+                          </Box>
+                        </ListItem>
+                      );
+                    })
                   : null}
               </List>
             )}
@@ -790,7 +1200,11 @@ const ChatPage = () => {
                 // Check if there's actually a model loaded in OVMS
                 try {
                   const ovmsStatus = await invoke("check_ovms_status");
-                  if (ovmsStatus && ovmsStatus.loaded_models && ovmsStatus.loaded_models.length > 0) {
+                  if (
+                    ovmsStatus &&
+                    ovmsStatus.loaded_models &&
+                    ovmsStatus.loaded_models.length > 0
+                  ) {
                     // There are loaded models, update our state
                     const firstModel = `OpenVINO/${ovmsStatus.loaded_models[0]}`;
                     setLoadedModel(firstModel);
@@ -800,7 +1214,7 @@ const ChatPage = () => {
                 } catch (error) {
                   console.error("Failed to check OVMS status:", error);
                 }
-                
+
                 showNotification(
                   "Please select and load a model first",
                   "warning"
@@ -814,7 +1228,9 @@ const ChatPage = () => {
             }}
             placeholder="How can I help you today?"
             disabled={
-              isSending || (!selectedModel && !loadedModel) || !activeChatSessionId
+              isSending ||
+              (!selectedModel && !loadedModel) ||
+              !activeChatSessionId
             }
             variant="outlined"
             sx={{
