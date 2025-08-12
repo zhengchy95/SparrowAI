@@ -740,7 +740,7 @@ const ChatPage = () => {
     if (toolCalls.length === 0) return null;
 
     return (
-      <Box sx={{ my: 2 }}>
+      <Box sx={{ my: 0 }}>
         {toolCalls.map((toolCall, index) => (
           <Accordion key={index} sx={{ mb: 1 }}>
             <AccordionSummary
@@ -762,7 +762,7 @@ const ChatPage = () => {
                   Calling tool: {toolCall.name}
                 </Typography>
                 <Chip
-                  label="Tool Call"
+                  label="MCP Tool Call"
                   size="small"
                   color="primary"
                   variant="outlined"
