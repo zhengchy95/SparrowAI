@@ -7,7 +7,7 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { Search as SearchIcon } from "@mui/icons-material";
-import useAppStore from "../store/useAppStore";
+import { useModels } from "../../store";
 import { invoke } from "@tauri-apps/api/core";
 
 const SearchBar = () => {
@@ -17,7 +17,7 @@ const SearchBar = () => {
     setSearchQuery,
     setSearchResults,
     setIsSearching,
-  } = useAppStore();
+  } = useModels();
   const [localQuery, setLocalQuery] = useState(searchQuery);
 
   const handleSearch = async () => {

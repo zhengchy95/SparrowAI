@@ -29,9 +29,8 @@ import {
   Extension as McpIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
-import useAppStore from "../store/useAppStore";
-import useChatStore from "../store/useChatStore";
-import OvmsStatusDialog from "./OvmsStatusDialog";
+import { useUI, useModels, useChat } from "../../store";
+import { OvmsStatusDialog } from "../settings";
 
 const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 64;
@@ -39,12 +38,22 @@ const DRAWER_WIDTH_COLLAPSED = 64;
 const Sidebar = ({
   currentPage,
   onPageChange,
-  isCollapsed,
-  onToggleCollapse,
 }) => {
   const theme = useTheme();
-  const { setSettingsDialogOpen, downloadedModels, showNotification, loadedModel, setLoadedModel } =
-    useAppStore();
+  
+  const { 
+    sidebarCollapsed: isCollapsed, 
+    toggleSidebar,
+    setSettingsDialogOpen, 
+    showNotification 
+  } = useUI();
+  
+  const { 
+    downloadedModels, 
+    loadedModel, 
+    setLoadedModel 
+  } = useModels();
+  
   const {
     chatSessions,
     activeChatSessionId,
@@ -56,7 +65,7 @@ const Sidebar = ({
     temporarySession,
     setTemporarySession,
     clearTemporarySession,
-  } = useChatStore();
+  } = useChat();
 
   const [loadingChatSessions, setLoadingChatSessions] = useState(false);
   const [ovmsStatusDialogOpen, setOvmsStatusDialogOpen] = useState(false);
@@ -248,7 +257,7 @@ const Sidebar = ({
       {/* Header - More Compact */}
       <Box sx={{ p: 1, textAlign: "center", position: "relative", mb: 1.5 }}>
         <IconButton
-          onClick={onToggleCollapse}
+          onClick={toggleSidebar}
           sx={{
             position: isCollapsed ? "static" : "absolute",
             top: isCollapsed ? 0 : 8,

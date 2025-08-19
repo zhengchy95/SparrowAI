@@ -1,50 +1,53 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { ThemeProvider } from "@mui/material/styles";
 import { 
   CssBaseline, 
-  Box, 
   Typography, 
   LinearProgress, 
   Dialog,
   DialogTitle,
   DialogContent,
-  Backdrop,
+  Box,
   CircularProgress
 } from "@mui/material";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import Sidebar from "./components/Sidebar";
-import ModelsPage from "./components/ModelsPage";
-import SettingsDialog from "./components/SettingsDialog";
-import NotificationSnackbar from "./components/NotificationSnackbar";
-import useDownloadedModels from "./hooks/useDownloadedModels";
-import useAppStore from "./store/useAppStore";
-import useChatStore from "./store/useChatStore";
-import { createAppTheme } from "./Themes";
 
-// Import ChatPage component
-import ChatPage from "./components/ChatPage";
-import DocumentsPage from "./components/DocumentsPage";
-import McpPage from "./components/McpPage";
+// Components
+import { 
+  Sidebar, 
+  AppLayout 
+} from "./components/layout";
+import { ChatPage } from "./components/chat";
+import { ModelsPage } from "./components/models";
+import { DocumentsPage } from "./components/documents";
+import { McpPage } from "./components/mcp";
+import { SettingsDialog } from "./components/settings";
+import { NotificationSnackbar } from "./components/ui";
+
+// Hooks and Store
+import { useDownloadedModels } from "./hooks";
+import { useUI, useTheme as useAppTheme, useModels, useChat } from "./store";
+import { createAppTheme } from "./theme";
 
 function App() {
-  const [currentPage, setCurrentPage] = useState("chat");
-  const [initStatus, setInitStatus] = useState(null);
-  const [showInitDialog, setShowInitDialog] = useState(false);
-  const {
-    sidebarCollapsed,
-    setSidebarCollapsed,
-    themeMode,
-    themeColor,
-    showNotification,
-    setIsOvmsRunning,
-  } = useAppStore();
+  const { 
+    currentPage, 
+    setCurrentPage,
+    showNotification 
+  } = useUI();
+  
+  const { themeMode = "dark", themeColor = "orange" } = useAppTheme();
+  const { setIsOvmsRunning } = useModels();
   const {
     setActiveChatSessionId,
     clearCurrentChatMessages,
     clearTemporarySession,
     setTemporarySession,
-  } = useChatStore();
+  } = useChat();
+  
+  const [initStatus, setInitStatus] = React.useState(null);
+  const [showInitDialog, setShowInitDialog] = React.useState(false);
 
   // Create theme based on current mode and color
   const theme = createAppTheme(themeMode, themeColor);
@@ -140,7 +143,7 @@ function App() {
     return () => {
       unlisten.then(f => f());
     };
-  }, []);
+  }, [setIsOvmsRunning, showNotification]);
 
   const renderPage = () => {
     switch (currentPage) {
@@ -157,118 +160,85 @@ function App() {
     }
   };
 
-  // Show main app
-  const DRAWER_WIDTH = 240;
-  const DRAWER_WIDTH_COLLAPSED = 64;
-  const drawerWidth = sidebarCollapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: "flex", height: "100vh" }}>
-        <Sidebar
-          currentPage={currentPage}
-          onPageChange={setCurrentPage}
-          isCollapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
+      
+      <AppLayout
+        sidebar={
+          <Sidebar
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+          />
+        }
+      >
+        {renderPage()}
+      </AppLayout>
 
-        <Box
-          component="main"
-          sx={{
-            flexGrow: 1,
-            p: { xs: 2, sm: 4 },
-            width: { sm: `calc(100% - ${drawerWidth}px)` },
-            backgroundColor: "background.default",
-            transition: theme.transitions.create("width", {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.leavingScreen,
-            }),
-            display: "flex",
-            flexDirection: "column",
-            maxWidth: "100%",
-            height: "100vh",
-          }}
-        >
-          <Box
+      <SettingsDialog />
+      <NotificationSnackbar />
+      
+      {/* OVMS Initialization Dialog */}
+      <Dialog
+        open={showInitDialog}
+        disableEscapeKeyDown
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            backgroundColor: "background.paper",
+            backdropFilter: "blur(10px)",
+          }
+        }}
+      >
+        <DialogTitle sx={{ textAlign: "center", pb: 1 }}>
+          <Typography
+            variant="h5"
+            component="h2"
             sx={{
-              maxWidth: currentPage === "chat" ? "800px" : "100%",
-              mx: "auto",
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
+              fontWeight: "bold",
+              color: "primary.main",
             }}
           >
-            {renderPage()}
-          </Box>
-        </Box>
-
-        <SettingsDialog />
-        <NotificationSnackbar />
+            SparrowAI
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            Initializing OVMS...
+          </Typography>
+        </DialogTitle>
         
-        {/* OVMS Initialization Dialog */}
-        <Dialog
-          open={showInitDialog}
-          disableEscapeKeyDown
-          maxWidth="sm"
-          fullWidth
-          PaperProps={{
-            sx: {
-              borderRadius: 3,
-              backgroundColor: "background.paper",
-              backdropFilter: "blur(10px)",
-            }
-          }}
-        >
-          <DialogTitle sx={{ textAlign: "center", pb: 1 }}>
-            <Typography
-              variant="h5"
-              component="h2"
-              sx={{
-                fontWeight: "bold",
-                color: "primary.main",
-              }}
-            >
-              SparrowAI
-            </Typography>
-            <Typography variant="subtitle1" color="text.secondary">
-              Initializing OVMS...
-            </Typography>
-          </DialogTitle>
-          
-          <DialogContent sx={{ textAlign: "center", pb: 3 }}>
-            {initStatus && (
-              <Box sx={{ my: 2 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <CircularProgress size={20} sx={{ mr: 2, color: "primary.main" }} />
-                  <Typography variant="body1" color="text.primary">
-                    {initStatus.message}
-                  </Typography>
-                </Box>
-                
-                <LinearProgress
-                  variant="determinate"
-                  value={initStatus.progress}
-                  sx={{
-                    height: 8,
-                    borderRadius: 4,
-                    mb: 1,
-                    backgroundColor: "action.hover",
-                    "& .MuiLinearProgress-bar": {
-                      borderRadius: 4,
-                      backgroundColor: "primary.main",
-                    },
-                  }}
-                />
-                <Typography variant="body2" color="text.secondary">
-                  {initStatus.progress}%
+        <DialogContent sx={{ textAlign: "center", pb: 3 }}>
+          {initStatus && (
+            <Box sx={{ my: 2 }}>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                <CircularProgress size={20} sx={{ mr: 2, color: "primary.main" }} />
+                <Typography variant="body1" color="text.primary">
+                  {initStatus.message}
                 </Typography>
               </Box>
-            )}
-          </DialogContent>
-        </Dialog>
-      </Box>
+              
+              <LinearProgress
+                variant="determinate"
+                value={initStatus.progress}
+                sx={{
+                  height: 8,
+                  borderRadius: 4,
+                  mb: 1,
+                  backgroundColor: "action.hover",
+                  "& .MuiLinearProgress-bar": {
+                    borderRadius: 4,
+                    backgroundColor: "primary.main",
+                  },
+                }}
+              />
+              <Typography variant="body2" color="text.secondary">
+                {initStatus.progress}%
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
     </ThemeProvider>
   );
 }

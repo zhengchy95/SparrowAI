@@ -37,8 +37,7 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css"; // Import KaTeX CSS
-import useAppStore from "../store/useAppStore";
-import useChatStore from "../store/useChatStore";
+import { useUI, useModels, useSettings, useChat, useChatStore } from "../../store";
 
 // Global listener to prevent duplicates
 let globalUnlisten = null;
@@ -54,17 +53,17 @@ let globalStreamingTimeout = null;
 let globalStreamingStartTime = null;
 
 const ChatPage = () => {
-  const {
+  const { showNotification } = useUI();
+  const { 
     downloadedModels,
-    settings,
-    showNotification,
     isOvmsRunning,
     loadedModel,
     setLoadedModel,
-  } = useAppStore();
+  } = useModels();
+  const { settings } = useSettings();
   const {
     activeChatSessionId,
-    currentChatMessages,
+    currentChatMessages = [],
     setCurrentChatMessages,
     addMessageToCurrentChat,
     clearCurrentChatMessages,
@@ -73,8 +72,8 @@ const ChatPage = () => {
     setTemporarySession,
     clearTemporarySession,
     addChatSession,
-    chatSessions,
-  } = useChatStore();
+    chatSessions = {},
+  } = useChat();
   const [inputMessage, setInputMessage] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [systemCapabilities, setSystemCapabilities] = useState(null);
@@ -114,6 +113,7 @@ const ChatPage = () => {
           if (
             ovmsStatus &&
             ovmsStatus.loaded_models &&
+            Array.isArray(ovmsStatus.loaded_models) &&
             ovmsStatus.loaded_models.length > 0
           ) {
             // Sort models to ensure consistency, then get the first one
@@ -316,7 +316,7 @@ const ChatPage = () => {
                   useChatStore.getState().currentChatMessages || [];
                 const updatedMessages = [...currentMessages];
                 const lastMessage = updatedMessages[updatedMessages.length - 1];
-                if (lastMessage && lastMessage.role === "assistant") {
+                if (lastMessage && lastMessage.role === "assistant" && savedMessage && savedMessage.id) {
                   lastMessage.id = savedMessage.id;
                   useChatStore
                     .getState()
@@ -574,7 +574,7 @@ const ChatPage = () => {
         addChatSession(persistedSession);
         clearTemporarySession();
 
-        sessionToUse = persistedSession.id;
+        sessionToUse = persistedSession && persistedSession.id ? persistedSession.id : null;
         console.log("Session persisted with ID:", sessionToUse);
       } else {
         // Add user message to existing persisted session
@@ -591,7 +591,7 @@ const ChatPage = () => {
 
         // Update session title if it was auto-generated and refresh chat sessions
         const sessionData = await invoke("get_chat_sessions");
-        const currentSession = sessionData.sessions[activeChatSessionId];
+        const currentSession = sessionData && sessionData.sessions ? sessionData.sessions[activeChatSessionId] : null;
         if (currentSession) {
           // Update the session in the store with the latest data including messages
           updateChatSession(activeChatSessionId, currentSession);
@@ -692,6 +692,15 @@ const ChatPage = () => {
 
   // Add a function to process tool calls in the message content
   const processToolCalls = (content) => {
+    // Handle undefined or null content
+    if (!content || typeof content !== 'string') {
+      return {
+        content: '',
+        toolCalls: [],
+        toolResponses: [],
+      };
+    }
+
     // Regular expressions to match tool calls and responses
     const toolCallRegex = /<tool_call>([\s\S]*?)<\/tool_call>/g;
     const toolResponseRegex = /<tool_response>([\s\S]*?)<\/tool_response>/g;
@@ -706,8 +715,8 @@ const ChatPage = () => {
       try {
         const toolData = JSON.parse(toolCallContent);
         toolCalls.push({
-          name: toolData.name,
-          arguments: toolData.arguments,
+          name: toolData && toolData.name || 'unknown',
+          arguments: toolData && toolData.arguments || {},
           fullMatch: match[0],
         });
       } catch (e) {
@@ -1083,10 +1092,10 @@ const ChatPage = () => {
                   ? currentChatMessages.map((message, index) => {
                       // Process tool calls for assistant messages
                       const processedMessage =
-                        message.role === "assistant"
-                          ? processToolCalls(message.content)
+                        message && message.role === "assistant"
+                          ? processToolCalls(message.content || '')
                           : {
-                              content: message.content,
+                              content: message ? message.content || '' : '',
                               toolCalls: [],
                               toolResponses: [],
                             };
@@ -1100,12 +1109,12 @@ const ChatPage = () => {
                             sx={{
                               mr: 2,
                               bgcolor:
-                                message.role === "user"
+                                message && message.role === "user"
                                   ? "primary.main"
                                   : "secondary.main",
                             }}
                           >
-                            {message.role === "user" ? (
+                            {message && message.role === "user" ? (
                               <PersonIcon />
                             ) : (
                               <BotIcon />
@@ -1136,10 +1145,10 @@ const ChatPage = () => {
                                     rehypePlugins={[rehypeKatex]}
                                     components={markdownComponents}
                                     style={{
-                                      color: message.isError
+                                      color: message && message.isError
                                         ? "error.main"
                                         : "inherit",
-                                      fontStyle: message.isStreaming
+                                      fontStyle: message && message.isStreaming
                                         ? "italic"
                                         : "normal",
                                     }}
@@ -1151,10 +1160,10 @@ const ChatPage = () => {
                                 <Typography
                                   variant="body1"
                                   sx={{
-                                    color: message.isError
+                                    color: message && message.isError
                                       ? "error.main"
                                       : "inherit",
-                                    fontStyle: message.isStreaming
+                                    fontStyle: message && message.isStreaming
                                       ? "italic"
                                       : "normal",
                                     whiteSpace: "pre-wrap",
@@ -1170,13 +1179,13 @@ const ChatPage = () => {
                               variant="caption"
                               color="text.secondary"
                             >
-                              {message.tokens_per_second
+                              {message.tokens_per_second && typeof message.tokens_per_second === 'number'
                                 ? `${message.tokens_per_second.toFixed(
                                     1
                                   )} tokens/sec`
-                                : new Date(
+                                : message.timestamp ? new Date(
                                     message.timestamp
-                                  ).toLocaleTimeString()}
+                                  ).toLocaleTimeString() : ''}
                             </Typography>
                           </Box>
                         </ListItem>
@@ -1215,6 +1224,7 @@ const ChatPage = () => {
                   if (
                     ovmsStatus &&
                     ovmsStatus.loaded_models &&
+                    Array.isArray(ovmsStatus.loaded_models) &&
                     ovmsStatus.loaded_models.length > 0
                   ) {
                     // There are loaded models, update our state

@@ -1,9 +1,9 @@
 import React, { useEffect } from "react";
 import { Snackbar, Alert } from "@mui/material";
-import useAppStore from "../store/useAppStore";
+import { useUI } from "../../store";
 
 const NotificationSnackbar = () => {
-  const { notification, clearNotification } = useAppStore();
+  const { notification, clearNotification } = useUI();
 
   const handleClose = (event, reason) => {
     if (reason === "clickaway") {

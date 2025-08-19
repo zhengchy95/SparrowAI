@@ -26,10 +26,10 @@ import {
   InsertDriveFile as FileIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
-import useAppStore from "../store/useAppStore";
+import { useUI } from "../../store";
 
 const DocumentsPage = () => {
-  const { showNotification } = useAppStore();
+  const { showNotification } = useUI();
   const [files, setFiles] = useState([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);

@@ -18,13 +18,14 @@ import {
   CalendarToday as CalendarIcon,
   Tag as TagIcon,
 } from '@mui/icons-material';
-import useAppStore from '../store/useAppStore';
+import { useModels, useUI } from '../../store';
 
 const ModelDetails = () => {
   const { 
     selectedModel, 
     setSelectedModel
-  } = useAppStore();
+  } = useModels();
+  const { showNotification } = useUI();
 
   const handleClose = () => {
     setSelectedModel(null);

@@ -31,11 +31,12 @@ import {
 import SearchBar from "./SearchBar";
 import ModelList from "./ModelList";
 import ModelDetails from "./ModelDetails";
-import useAppStore from "../store/useAppStore";
+import { useModels, useUI } from "../../store";
 import { invoke } from "@tauri-apps/api/core";
 
 const DownloadedModelCard = ({ modelId, loadedModelId }) => {
-  const { removeDownloadedModel, showNotification } = useAppStore();
+  const { removeDownloadedModel } = useModels();
+  const { showNotification } = useUI();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const isLoaded = loadedModelId === modelId;
@@ -179,7 +180,7 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
 const ModelsPage = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [loadedModelId, setLoadedModelId] = useState(null);
-  const { downloadedModels } = useAppStore();
+  const { downloadedModels } = useModels();
   const downloadedModelsList = Array.from(downloadedModels);
 
   // Check loaded model when component mounts or when switching to downloaded models tab

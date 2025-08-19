@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import useAppStore from '../store/useAppStore';
+import { useModels } from '../store';
 
 export const useDownloadedModels = () => {
-  const { setDownloadedModels, setDownloadProgress } = useAppStore();
+  const { setDownloadedModels, setDownloadProgress } = useModels();
 
   // Check for downloaded models on app start
   useEffect(() => {

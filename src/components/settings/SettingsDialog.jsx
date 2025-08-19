@@ -38,21 +38,15 @@ import {
   Brightness6 as ThemeIcon,
   AutoAwesome as RAGIcon,
 } from "@mui/icons-material";
-import useAppStore from "../store/useAppStore";
-import { getAvailableThemeColors } from "../Themes";
+import { useUI, useTheme, useSettings } from "../../store";
+import { getAvailableThemeColors } from "../../theme";
 
 const SettingsDialog = () => {
   const [activeTab, setActiveTab] = useState(0);
-  const {
-    settingsDialogOpen,
-    setSettingsDialogOpen,
-    themeMode,
-    setThemeMode,
-    themeColor,
-    setThemeColor,
-    settings,
-    updateSettings,
-  } = useAppStore();
+  
+  const { settingsDialogOpen, setSettingsDialogOpen } = useUI();
+  const { themeMode, themeColor, setThemeMode, setThemeColor } = useTheme();
+  const { settings, updateSettings } = useSettings();
 
   const handleClose = () => {
     setSettingsDialogOpen(false);

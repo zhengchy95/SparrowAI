@@ -27,7 +27,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Delete as DeleteIcon,
 } from "@mui/icons-material";
-import useAppStore from "../store/useAppStore";
+import { useModels, useUI } from "../../store";
 import { invoke } from "@tauri-apps/api/core";
 
 const ModelCard = ({ modelId }) => {
@@ -43,7 +43,7 @@ const ModelCard = ({ modelId }) => {
     removeDownloadedModel,
     getDownloadProgress,
     showNotification,
-  } = useAppStore();
+  } = useModels();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -387,7 +387,7 @@ const ModelCard = ({ modelId }) => {
 };
 
 const ModelList = () => {
-  const { searchResults, searchQuery, isSearching } = useAppStore();
+  const { searchResults, searchQuery, isSearching } = useModels();
 
   if (!searchQuery) {
     return (

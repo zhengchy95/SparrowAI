@@ -27,7 +27,7 @@ import {
   Edit as EditIcon,
 } from "@mui/icons-material";
 import { invoke } from "@tauri-apps/api/core";
-import useAppStore from "../store/useAppStore";
+import { useUI } from "../../store";
 import AddMcpServerDialog from "./AddMcpServerDialog";
 
 const McpPage = () => {
@@ -38,7 +38,7 @@ const McpPage = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingServer, setEditingServer] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
-  const { showNotification } = useAppStore();
+  const { showNotification } = useUI();
 
   // Load MCP servers on component mount
   useEffect(() => {
