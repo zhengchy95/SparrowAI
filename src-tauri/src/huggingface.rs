@@ -1,5 +1,5 @@
 use serde::{ Deserialize, Serialize };
-use tracing::{info, warn, error};
+use tracing::{ info, warn, error };
 use std::path::PathBuf;
 use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
@@ -269,6 +269,113 @@ pub async fn get_model_info(model_id: String) -> Result<ModelInfo, String> {
     })
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelUpdateInfo {
+    pub model_id: String,
+    pub is_latest: bool,
+    pub local_commit: Option<String>,
+    pub remote_commit: Option<String>,
+    pub needs_update: bool,
+}
+
+// Function to write commit SHA to .commit_id file
+async fn write_commit_id(model_dir: &PathBuf, commit_sha: &str) -> Result<(), String> {
+    let commit_file = model_dir.join(".commit_id");
+    tokio::fs
+        ::write(&commit_file, commit_sha).await
+        .map_err(|e|
+            format!("Failed to write commit ID to {}: {}", commit_file.to_string_lossy(), e)
+        )?;
+
+    info!(
+        model_dir = %model_dir.to_string_lossy(),
+        commit_sha = %commit_sha,
+        "Wrote commit ID to .commit_id file"
+    );
+
+    Ok(())
+}
+
+// Function to read commit SHA from .commit_id file
+async fn read_commit_id(model_dir: &PathBuf) -> Result<String, String> {
+    let commit_file = model_dir.join(".commit_id");
+
+    if !commit_file.exists() {
+        return Err("No .commit_id file found".to_string());
+    }
+
+    let commit_sha = tokio::fs
+        ::read_to_string(&commit_file).await
+        .map_err(|e|
+            format!("Failed to read commit ID from {}: {}", commit_file.to_string_lossy(), e)
+        )?;
+
+    Ok(commit_sha.trim().to_string())
+}
+
+#[tauri::command]
+pub async fn check_model_update_status(
+    model_id: String,
+    models_dir: Option<String>
+) -> Result<ModelUpdateInfo, String> {
+    // Ensure we're checking an OpenVINO model
+    let normalized_model_id = if model_id.starts_with("OpenVINO/") {
+        model_id
+    } else {
+        format!("OpenVINO/{}", model_id)
+    };
+
+    // Determine model directory
+    let model_dir = if let Some(dir) = models_dir {
+        PathBuf::from(dir).join(&normalized_model_id)
+    } else {
+        let home_dir = std::env
+            ::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .map_err(|e| format!("Failed to get user home directory: {}", e))?;
+        PathBuf::from(home_dir).join(".sparrow").join("models").join(&normalized_model_id)
+    };
+
+    // Check if model directory exists
+    if !model_dir.exists() {
+        return Err(format!("Model directory not found: {}", model_dir.to_string_lossy()));
+    }
+
+    // Read local commit SHA
+    let local_commit = match read_commit_id(&model_dir).await {
+        Ok(sha) => Some(sha),
+        Err(_) => {
+            warn!(
+                model_id = %normalized_model_id,
+                "No .commit_id file found for model"
+            );
+            None
+        }
+    };
+
+    // Get remote model info to check latest commit
+    let remote_model_info = get_model_info(normalized_model_id.clone()).await?;
+    let remote_commit = remote_model_info.sha;
+
+    // Determine if update is needed
+    let needs_update = match (&local_commit, &remote_commit) {
+        (Some(local), Some(remote)) => local != remote,
+        (None, Some(_)) => true, // No local commit info, assume update needed
+        (Some(_), None) => false, // Remote has no commit info, assume local is fine
+        (None, None) => false, // Neither has commit info, assume no update needed
+    };
+
+    let is_latest = !needs_update;
+
+    Ok(ModelUpdateInfo {
+        model_id: normalized_model_id,
+        is_latest,
+        local_commit,
+        remote_commit,
+        needs_update,
+    })
+}
+
 #[tauri::command]
 pub async fn download_entire_model(
     model_id: String,
@@ -281,6 +388,9 @@ pub async fn download_entire_model(
     } else {
         format!("OpenVINO/{}", model_id)
     };
+
+    // Get model info first to retrieve commit SHA
+    let model_info = get_model_info(normalized_model_id.clone()).await?;
 
     // Create a client with timeout to prevent hanging
     let client = reqwest::Client
@@ -402,6 +512,22 @@ pub async fn download_entire_model(
             format!("Download errors occurred:\n{}", errors.join("\n"))
         };
         return Err(format!("Failed to download model files. {}", error_details));
+    }
+
+    // Write commit ID to .commit_id file after successful download
+    if let Some(commit_sha) = &model_info.sha {
+        if let Err(e) = write_commit_id(&target_dir, commit_sha).await {
+            warn!(
+                error = %e,
+                model_id = %normalized_model_id,
+                "Failed to write commit ID file"
+            );
+        }
+    } else {
+        warn!(
+            model_id = %normalized_model_id,
+            "No commit SHA available for model"
+        );
     }
 
     let total_size_mb = (total_downloaded_size as f64) / (1024.0 * 1024.0);

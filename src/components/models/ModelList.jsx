@@ -42,8 +42,9 @@ const ModelCard = ({ modelId }) => {
     addDownloadedModel,
     removeDownloadedModel,
     getDownloadProgress,
-    showNotification,
   } = useModels();
+
+  const { showNotification } = useUI();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -424,11 +425,25 @@ const ModelList = () => {
   }
 
   return (
-    <Box>
-      <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
-        Search Results ({searchResults.length})
-      </Typography>
-      <Box>
+    <Box
+      sx={{
+        height: "calc(100vh - 250px)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <Box sx={{ flexShrink: 0, mb: 2 }}>
+        <Typography variant="h5" gutterBottom>
+          Search Results ({searchResults.length})
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          flex: 1,
+          overflow: "auto",
+          pr: 1, // Add some padding for scrollbar
+        }}
+      >
         {searchResults.map((modelId, index) => (
           <ModelCard key={modelId || index} modelId={modelId} />
         ))}

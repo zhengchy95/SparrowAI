@@ -51,6 +51,33 @@ const McpPage = () => {
       setError(null);
       const serverList = await invoke("get_mcp_servers");
       setServers(serverList);
+
+      // Fetch tools for any connected servers
+      const connectedServers = serverList.filter(
+        (server) => server.status === "connected"
+      );
+      for (const server of connectedServers) {
+        try {
+          const tools = await invoke("fetch_mcp_server_tools", {
+            serverName: server.name,
+          });
+          console.log(
+            `Fetched ${tools.length} tools from ${server.name}:`,
+            tools
+          );
+
+          // Update the server in the list with the fetched tools
+          setServers((prev) =>
+            prev.map((s) =>
+              s.name === server.name
+                ? { ...s, tools: tools.map((tool) => tool.name || tool) }
+                : s
+            )
+          );
+        } catch (toolErr) {
+          console.warn(`Failed to fetch tools for ${server.name}:`, toolErr);
+        }
+      }
     } catch (err) {
       console.error("Failed to load MCP servers:", err);
       setError(err.toString());
@@ -62,27 +89,32 @@ const McpPage = () => {
 
   const handleConnect = async (serverName) => {
     try {
-      setActionLoading(prev => ({ ...prev, [serverName]: "connecting" }));
+      setActionLoading((prev) => ({ ...prev, [serverName]: "connecting" }));
       showNotification(`Starting MCP server: ${serverName}...`, "info");
-      
+
       const result = await invoke("connect_mcp_server", { serverName });
       showNotification(result, "success");
-      
+
       // Refresh the server list first
-      await loadServers(); 
-      
+      await loadServers();
+
       // After connecting, try to fetch tools and update the server state
       try {
         const tools = await invoke("fetch_mcp_server_tools", { serverName });
-        showNotification(`Fetched ${tools.length} tools from ${serverName}`, "success");
+        showNotification(
+          `Fetched ${tools.length} tools from ${serverName}`,
+          "success"
+        );
         console.log(`Fetched ${tools.length} tools from ${serverName}:`, tools);
-        
+
         // Update the servers state with the fetched tools
-        setServers(prev => prev.map(server => 
-          server.name === serverName 
-            ? { ...server, tools: tools.map(tool => tool.name || tool) }
-            : server
-        ));
+        setServers((prev) =>
+          prev.map((server) =>
+            server.name === serverName
+              ? { ...server, tools: tools.map((tool) => tool.name || tool) }
+              : server
+          )
+        );
       } catch (toolErr) {
         console.warn("Failed to fetch tools:", toolErr);
         showNotification("Server started but failed to fetch tools", "warning");
@@ -91,13 +123,13 @@ const McpPage = () => {
       console.error("Failed to start MCP server:", err);
       showNotification(`Failed to start server: ${err}`, "error");
     } finally {
-      setActionLoading(prev => ({ ...prev, [serverName]: null }));
+      setActionLoading((prev) => ({ ...prev, [serverName]: null }));
     }
   };
 
   const handleDisconnect = async (serverName) => {
     try {
-      setActionLoading(prev => ({ ...prev, [serverName]: "disconnecting" }));
+      setActionLoading((prev) => ({ ...prev, [serverName]: "disconnecting" }));
       const result = await invoke("disconnect_mcp_server", { serverName });
       showNotification(`Stopped MCP server: ${serverName}`, "success");
       await loadServers(); // Refresh the list
@@ -105,13 +137,13 @@ const McpPage = () => {
       console.error("Failed to stop MCP server:", err);
       showNotification(`Failed to stop server: ${err}`, "error");
     } finally {
-      setActionLoading(prev => ({ ...prev, [serverName]: null }));
+      setActionLoading((prev) => ({ ...prev, [serverName]: null }));
     }
   };
 
   const handleRemove = async (serverName) => {
     try {
-      setActionLoading(prev => ({ ...prev, [serverName]: "removing" }));
+      setActionLoading((prev) => ({ ...prev, [serverName]: "removing" }));
       const result = await invoke("remove_mcp_server", { serverName });
       showNotification(result, "success");
       await loadServers(); // Refresh the list
@@ -119,7 +151,7 @@ const McpPage = () => {
       console.error("Failed to remove MCP server:", err);
       showNotification(`Failed to remove: ${err}`, "error");
     } finally {
-      setActionLoading(prev => ({ ...prev, [serverName]: null }));
+      setActionLoading((prev) => ({ ...prev, [serverName]: null }));
     }
   };
 
@@ -152,7 +184,10 @@ const McpPage = () => {
 
   const openEditDialog = (server) => {
     if (server.status === "connected") {
-      showNotification("Cannot edit a connected server. Please disconnect first.", "warning");
+      showNotification(
+        "Cannot edit a connected server. Please disconnect first.",
+        "warning"
+      );
       return;
     }
     setEditingServer(server);
@@ -239,8 +274,9 @@ const McpPage = () => {
 
       {/* Description */}
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Model Context Protocol (MCP) servers provide tools and resources that can
-        be used by AI models. Configure and manage your MCP server connections here.
+        Model Context Protocol (MCP) servers provide tools and resources that
+        can be used by AI models. Configure and manage your MCP server
+        connections here.
       </Typography>
 
       {/* Servers Table */}
@@ -251,7 +287,8 @@ const McpPage = () => {
               No MCP servers configured
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Add your first MCP server to get started with extended AI capabilities.
+              Add your first MCP server to get started with extended AI
+              capabilities.
             </Typography>
             <Button
               variant="contained"
@@ -289,12 +326,18 @@ const McpPage = () => {
                         <Typography variant="body2" color="text.secondary">
                           <strong>Command:</strong> {server.config.command}
                         </Typography>
-                        {server.config.args && server.config.args.length > 0 && (
-                          <Typography variant="caption" display="block">
-                            Args: {server.config.args.join(" ")}
-                          </Typography>
-                        )}
-                        <Chip label="stdio" size="small" variant="outlined" sx={{ mt: 0.5 }} />
+                        {server.config.args &&
+                          server.config.args.length > 0 && (
+                            <Typography variant="caption" display="block">
+                              Args: {server.config.args.join(" ")}
+                            </Typography>
+                          )}
+                        <Chip
+                          label="stdio"
+                          size="small"
+                          variant="outlined"
+                          sx={{ mt: 0.5 }}
+                        />
                       </>
                     ) : server.config.url ? (
                       // URL-based transport (SSE or HTTP)
@@ -302,11 +345,17 @@ const McpPage = () => {
                         <Typography variant="body2" color="text.secondary">
                           <strong>URL:</strong> {server.config.url}
                         </Typography>
-                        <Chip 
-                          label={server.config.url.endsWith('/sse') ? 'SSE' : server.config.url.endsWith('/mcp') ? 'HTTP' : 'URL'}
-                          size="small" 
-                          variant="outlined" 
-                          sx={{ mt: 0.5 }} 
+                        <Chip
+                          label={
+                            server.config.url.endsWith("/sse")
+                              ? "SSE"
+                              : server.config.url.endsWith("/mcp")
+                              ? "HTTP"
+                              : "URL"
+                          }
+                          size="small"
+                          variant="outlined"
+                          sx={{ mt: 0.5 }}
                         />
                       </>
                     ) : (
@@ -354,7 +403,9 @@ const McpPage = () => {
                           size="small"
                           color="warning"
                           onClick={() => handleDisconnect(server.name)}
-                          disabled={actionLoading[server.name] === "disconnecting"}
+                          disabled={
+                            actionLoading[server.name] === "disconnecting"
+                          }
                           title="Stop Server"
                         >
                           {actionLoading[server.name] === "disconnecting" ? (

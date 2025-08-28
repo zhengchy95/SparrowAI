@@ -129,10 +129,14 @@ const DownloadedModelCard = ({ modelId, loadedModelId }) => {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title={isSystemModel ? "Cannot delete system model" : "Delete Model"}>
+            <Tooltip
+              title={
+                isSystemModel ? "Cannot delete system model" : "Delete Model"
+              }
+            >
               <span>
-                <IconButton 
-                  color="error" 
+                <IconButton
+                  color="error"
                   onClick={handleDeleteClick}
                   disabled={isSystemModel}
                 >
@@ -228,13 +232,20 @@ const ModelsPage = () => {
       )}
 
       {activeTab === 1 && (
-        <Box>
+        <Box
+          sx={{
+            height: "calc(100vh - 200px)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           <Box
             sx={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "flex-start",
               mb: 2,
+              flexShrink: 0,
             }}
           >
             <Box>
@@ -265,7 +276,13 @@ const ModelsPage = () => {
               </Button>
             </Card>
           ) : (
-            <>
+            <Box
+              sx={{
+                flex: 1,
+                overflow: "auto",
+                pr: 1, // Add some padding for scrollbar
+              }}
+            >
               <Grid container spacing={2}>
                 {downloadedModelsList.map((modelId) => (
                   <Grid size={12} key={modelId}>
@@ -276,11 +293,10 @@ const ModelsPage = () => {
                   </Grid>
                 ))}
               </Grid>
-            </>
+            </Box>
           )}
         </Box>
       )}
-
     </Box>
   );
 };

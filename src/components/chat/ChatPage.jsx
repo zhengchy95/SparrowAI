@@ -26,7 +26,7 @@ import {
   SmartToy as BotIcon,
   Memory as LoadIcon,
   Stop as StopIcon,
-  Info as InfoIcon,
+  Psychology as ThinkingIcon, // Changed from InfoIcon to Psychology
   Build as ToolIcon,
   ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
@@ -37,7 +37,13 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css"; // Import KaTeX CSS
-import { useUI, useModels, useSettings, useChat, useChatStore } from "../../store";
+import {
+  useUI,
+  useModels,
+  useSettings,
+  useChat,
+  useChatStore,
+} from "../../store";
 
 // Global listener to prevent duplicates
 let globalUnlisten = null;
@@ -54,12 +60,8 @@ let globalStreamingStartTime = null;
 
 const ChatPage = () => {
   const { showNotification } = useUI();
-  const { 
-    downloadedModels,
-    isOvmsRunning,
-    loadedModel,
-    setLoadedModel,
-  } = useModels();
+  const { downloadedModels, isOvmsRunning, loadedModel, setLoadedModel } =
+    useModels();
   const { settings } = useSettings();
   const {
     activeChatSessionId,
@@ -316,7 +318,12 @@ const ChatPage = () => {
                   useChatStore.getState().currentChatMessages || [];
                 const updatedMessages = [...currentMessages];
                 const lastMessage = updatedMessages[updatedMessages.length - 1];
-                if (lastMessage && lastMessage.role === "assistant" && savedMessage && savedMessage.id) {
+                if (
+                  lastMessage &&
+                  lastMessage.role === "assistant" &&
+                  savedMessage &&
+                  savedMessage.id
+                ) {
                   lastMessage.id = savedMessage.id;
                   useChatStore
                     .getState()
@@ -389,9 +396,28 @@ const ChatPage = () => {
 
               if (messageIndex !== -1) {
                 const existingMessage = newMessages[messageIndex];
+                const currentContent = existingMessage.content || "";
+                const newContent = currentContent + token;
+
+                // Check if we just received a <think> opening tag
+                const hasThinkStart = newContent.includes("<think>");
+                const hasThinkEnd = newContent.includes("</think>");
+
+                // Check if we just received a <tool_call> opening tag
+                const hasToolCallStart = newContent.includes("<tool_call>");
+                const hasToolCallEnd = newContent.includes("</tool_call>");
+
+                // If we have <think> but not </think>, we're in the middle of a thinking block
+                const isInThinkingBlock = hasThinkStart && !hasThinkEnd;
+
+                // If we have <tool_call> but not </tool_call>, we're in the middle of a tool call block
+                const isInToolCallBlock = hasToolCallStart && !hasToolCallEnd;
+
                 const updatedMessage = {
                   ...existingMessage,
-                  content: existingMessage.content + token,
+                  content: newContent,
+                  isInThinkingBlock: isInThinkingBlock, // Add flag to track thinking state
+                  isInToolCallBlock: isInToolCallBlock, // Add flag to track tool call state
                 };
                 newMessages[messageIndex] = updatedMessage;
               }
@@ -574,7 +600,8 @@ const ChatPage = () => {
         addChatSession(persistedSession);
         clearTemporarySession();
 
-        sessionToUse = persistedSession && persistedSession.id ? persistedSession.id : null;
+        sessionToUse =
+          persistedSession && persistedSession.id ? persistedSession.id : null;
         console.log("Session persisted with ID:", sessionToUse);
       } else {
         // Add user message to existing persisted session
@@ -591,7 +618,10 @@ const ChatPage = () => {
 
         // Update session title if it was auto-generated and refresh chat sessions
         const sessionData = await invoke("get_chat_sessions");
-        const currentSession = sessionData && sessionData.sessions ? sessionData.sessions[activeChatSessionId] : null;
+        const currentSession =
+          sessionData && sessionData.sessions
+            ? sessionData.sessions[activeChatSessionId]
+            : null;
         if (currentSession) {
           // Update the session in the store with the latest data including messages
           updateChatSession(activeChatSessionId, currentSession);
@@ -690,149 +720,410 @@ const ChatPage = () => {
     );
   }
 
-  // Add a function to process tool calls in the message content
-  const processToolCalls = (content) => {
+  // Add a function to process and render content with proper sequence
+  const processContentParts = (
+    content,
+    isStreaming = false,
+    isInThinkingBlock = false,
+    isInToolCallBlock = false
+  ) => {
     // Handle undefined or null content
-    if (!content || typeof content !== 'string') {
-      return {
-        content: '',
-        toolCalls: [],
-        toolResponses: [],
-      };
+    if (!content || typeof content !== "string") {
+      return [];
     }
 
-    // Regular expressions to match tool calls and responses
-    const toolCallRegex = /<tool_call>([\s\S]*?)<\/tool_call>/g;
-    const toolResponseRegex = /<tool_response>([\s\S]*?)<\/tool_response>/g;
+    // Split content by all types of blocks while preserving order
+    const parts = [];
+    let lastIndex = 0;
 
-    let processedContent = content;
-    const toolCalls = [];
+    // Find all blocks with their positions
+    const allMatches = [];
 
-    // Extract tool calls
+    // Complete thinking blocks
+    const thinkingRegex = /<think>([\s\S]*?)<\/think>/g;
     let match;
+    while ((match = thinkingRegex.exec(content)) !== null) {
+      allMatches.push({
+        type: "thinking",
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[1].trim(),
+        fullMatch: match[0],
+        isComplete: true,
+        isStreaming: false,
+      });
+    }
+
+    // Complete tool calls
+    const toolCallRegex = /<tool_call>([\s\S]*?)<\/tool_call>/g;
     while ((match = toolCallRegex.exec(content)) !== null) {
       const toolCallContent = match[1].trim();
       try {
         const toolData = JSON.parse(toolCallContent);
-        toolCalls.push({
-          name: toolData && toolData.name || 'unknown',
-          arguments: toolData && toolData.arguments || {},
+        allMatches.push({
+          type: "tool_call",
+          start: match.index,
+          end: match.index + match[0].length,
+          name: (toolData && toolData.name) || "unknown",
+          arguments: (toolData && toolData.arguments) || {},
           fullMatch: match[0],
+          isComplete: true,
+          isStreaming: false,
         });
       } catch (e) {
         console.warn("Failed to parse tool call JSON:", toolCallContent);
       }
     }
 
-    // Extract tool responses
-    const toolResponses = [];
+    // Tool responses
+    const toolResponseRegex = /<tool_response>([\s\S]*?)<\/tool_response>/g;
     while ((match = toolResponseRegex.exec(content)) !== null) {
-      toolResponses.push({
+      allMatches.push({
+        type: "tool_response",
+        start: match.index,
+        end: match.index + match[0].length,
         content: match[1].trim(),
         fullMatch: match[0],
       });
     }
 
-    // Remove tool calls and responses from content
-    processedContent = processedContent.replace(toolCallRegex, "");
-    processedContent = processedContent.replace(toolResponseRegex, "");
+    // Check for incomplete blocks during streaming
+    if (isStreaming) {
+      // Incomplete thinking block
+      if (isInThinkingBlock || content.includes("<think>")) {
+        const incompleteThinkingRegex = /<think>([\s\S]*)$/;
+        const incompleteMatch = incompleteThinkingRegex.exec(content);
+        if (incompleteMatch) {
+          const thinkingContent = incompleteMatch[1];
+          // Only add if it's not already captured by complete thinking regex
+          const hasCompleteThinking = content.includes("</think>");
+          if (!hasCompleteThinking || thinkingContent.trim()) {
+            allMatches.push({
+              type: "thinking",
+              start: incompleteMatch.index,
+              end: content.length,
+              content: thinkingContent,
+              fullMatch: incompleteMatch[0],
+              isComplete: false,
+              isStreaming: true,
+            });
+          }
+        }
+      }
 
-    return {
-      content: processedContent.trim(),
-      toolCalls,
-      toolResponses,
-    };
+      // Incomplete tool call
+      if (isInToolCallBlock || content.includes("<tool_call>")) {
+        const incompleteToolCallRegex = /<tool_call>([\s\S]*)$/;
+        const incompleteMatch = incompleteToolCallRegex.exec(content);
+        if (incompleteMatch) {
+          const toolCallContent = incompleteMatch[1];
+          // Only add if it's not already captured by complete tool call regex
+          const hasCompleteToolCall = content.includes("</tool_call>");
+          if (!hasCompleteToolCall || toolCallContent.trim()) {
+            allMatches.push({
+              type: "tool_call",
+              start: incompleteMatch.index,
+              end: content.length,
+              name: "Preparing...",
+              arguments: toolCallContent || "Loading tool call...",
+              fullMatch: incompleteMatch[0],
+              isComplete: false,
+              isStreaming: true,
+            });
+          }
+        }
+      }
+    }
+
+    // Sort by position in content
+    allMatches.sort((a, b) => a.start - b.start);
+
+    // Build parts array maintaining original order
+    allMatches.forEach((match) => {
+      // Add text before this match
+      if (lastIndex < match.start) {
+        const textBefore = content.slice(lastIndex, match.start);
+        if (textBefore.trim()) {
+          parts.push({
+            type: "text",
+            content: textBefore,
+          });
+        }
+      }
+
+      // Add the match
+      parts.push(match);
+      lastIndex = match.end;
+    });
+
+    // Add remaining text after last match
+    if (lastIndex < content.length) {
+      const remainingText = content.slice(lastIndex);
+      if (remainingText.trim()) {
+        parts.push({
+          type: "text",
+          content: remainingText,
+        });
+      }
+    }
+
+    // If no matches found, return the original content as a single text part
+    if (parts.length === 0) {
+      parts.push({
+        type: "text",
+        content: content,
+      });
+    }
+
+    return parts;
   };
 
-  // Component for rendering tool calls
-  const ToolCallDisplay = ({ toolCalls, toolResponses }) => {
-    if (toolCalls.length === 0) return null;
-
+  // Component for rendering a single thinking block
+  const ThinkingDisplay = ({ thinking }) => {
     return (
-      <Box sx={{ my: 0 }}>
-        {toolCalls.map((toolCall, index) => (
-          <Accordion key={index} sx={{ mb: 1 }}>
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
+      <Accordion sx={{ mb: 1 }}>
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          sx={{
+            backgroundColor: (theme) =>
+              theme.palette.mode === "dark" ? "grey.800" : "grey.100",
+            borderRadius: 1,
+            "&.Mui-expanded": {
+              minHeight: 48,
+            },
+            "& .MuiAccordionSummary-content": {
+              alignItems: "center",
+            },
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <ThinkingIcon sx={{ fontSize: 20, color: "secondary.main" }} />
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              {thinking.isStreaming ? "Thinking..." : "Thinking Process"}
+            </Typography>
+            <Chip
+              label={thinking.isStreaming ? "Processing" : "AI Reasoning"}
+              size="small"
+              color="secondary"
+              variant={thinking.isStreaming ? "filled" : "outlined"}
+            />
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Box
+            sx={{
+              backgroundColor: (theme) =>
+                theme.palette.mode === "dark" ? "grey.900" : "grey.50",
+              borderRadius: 1,
+              p: 2,
+              fontSize: "0.875rem",
+              fontStyle: "italic",
+            }}
+          >
+            <Typography
+              variant="body2"
               sx={{
-                backgroundColor: "action.hover",
-                borderRadius: 1,
-                "&.Mui-expanded": {
-                  minHeight: 48,
-                },
-                "& .MuiAccordionSummary-content": {
-                  alignItems: "center",
-                },
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+                fontStyle: thinking.isStreaming ? "italic" : "normal",
+                opacity: thinking.isStreaming ? 0.8 : 1,
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <ToolIcon sx={{ fontSize: 20, color: "primary.main" }} />
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  Calling tool: {toolCall.name}
-                </Typography>
-                <Chip
-                  label="MCP Tool Call"
-                  size="small"
-                  color="primary"
-                  variant="outlined"
+              {thinking.content}
+              {thinking.isStreaming && (
+                <Box
+                  component="span"
+                  sx={{
+                    display: "inline-block",
+                    width: "8px",
+                    height: "1.2em",
+                    backgroundColor: "secondary.main",
+                    marginLeft: "2px",
+                    animation: "blink 1s infinite",
+                    "@keyframes blink": {
+                      "0%, 50%": { opacity: 1 },
+                      "51%, 100%": { opacity: 0 },
+                    },
+                  }}
                 />
-              </Box>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Box>
+              )}
+            </Typography>
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+    );
+  };
+
+  // Component for rendering a single tool call
+  const ToolCallDisplay = ({ toolCall, toolResponse }) => {
+    return (
+      <Accordion sx={{ mb: 1 }}>
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          sx={{
+            backgroundColor: "action.hover",
+            borderRadius: 1,
+            "&.Mui-expanded": {
+              minHeight: 48,
+            },
+            "& .MuiAccordionSummary-content": {
+              alignItems: "center",
+            },
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <ToolIcon sx={{ fontSize: 20, color: "primary.main" }} />
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              {toolCall.isStreaming
+                ? "Preparing tool call..."
+                : `Calling tool: ${toolCall.name}`}
+            </Typography>
+            <Chip
+              label={toolCall.isStreaming ? "Loading" : "MCP Tool Call"}
+              size="small"
+              color="primary"
+              variant={toolCall.isStreaming ? "filled" : "outlined"}
+            />
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+              Arguments:
+            </Typography>
+            <Box
+              component="pre"
+              sx={{
+                backgroundColor: (theme) =>
+                  theme.palette.mode === "dark" ? "grey.800" : "grey.100",
+                borderRadius: 1,
+                p: 1.5,
+                fontSize: "0.75rem",
+                fontFamily: "monospace",
+                overflow: "auto",
+                mb: 2,
+                color: (theme) =>
+                  theme.palette.mode === "dark" ? "grey.100" : "inherit",
+                fontStyle: toolCall.isStreaming ? "italic" : "normal",
+                opacity: toolCall.isStreaming ? 0.8 : 1,
+              }}
+            >
+              {typeof toolCall.arguments === "string"
+                ? toolCall.arguments
+                : JSON.stringify(toolCall.arguments, null, 2)}
+              {toolCall.isStreaming && (
+                <Box
+                  component="span"
+                  sx={{
+                    display: "inline-block",
+                    width: "8px",
+                    height: "1.2em",
+                    backgroundColor: "primary.main",
+                    marginLeft: "2px",
+                    animation: "blink 1s infinite",
+                    "@keyframes blink": {
+                      "0%, 50%": { opacity: 1 },
+                      "51%, 100%": { opacity: 0 },
+                    },
+                  }}
+                />
+              )}
+            </Box>
+
+            {toolResponse && (
+              <>
                 <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                  Arguments:
+                  Response:
                 </Typography>
                 <Box
-                  component="pre"
                   sx={{
                     backgroundColor: (theme) =>
-                      theme.palette.mode === "dark" ? "grey.800" : "grey.100",
+                      theme.palette.mode === "dark"
+                        ? "success.dark"
+                        : "success.light",
                     borderRadius: 1,
                     p: 1.5,
-                    fontSize: "0.75rem",
-                    fontFamily: "monospace",
-                    overflow: "auto",
-                    mb: 2,
+                    fontSize: "0.875rem",
                     color: (theme) =>
-                      theme.palette.mode === "dark" ? "grey.100" : "inherit",
+                      theme.palette.mode === "dark"
+                        ? "success.contrastText"
+                        : "success.contrastText",
                   }}
                 >
-                  {typeof toolCall.arguments === "string"
-                    ? toolCall.arguments
-                    : JSON.stringify(toolCall.arguments, null, 2)}
+                  <Box
+                    component="pre"
+                    sx={{
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "monospace",
+                      fontSize: "0.875rem",
+                      margin: 0,
+                      wordBreak: "break-word",
+                      overflowWrap: "break-word",
+                      color: (theme) =>
+                        theme.palette.mode === "dark" ? "#fff" : "inherit",
+                    }}
+                  >
+                    {toolResponse.content.replace(/\\n/g, "\n")}
+                  </Box>
                 </Box>
+              </>
+            )}
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+    );
+  };
 
-                {toolResponses[index] && (
-                  <>
-                    <Typography
-                      variant="subtitle2"
-                      sx={{ mb: 1, fontWeight: 600 }}
-                    >
-                      Response:
-                    </Typography>
-                    <Box
-                      sx={{
-                        backgroundColor: "success.light",
-                        borderRadius: 1,
-                        p: 1.5,
-                        fontSize: "0.875rem",
-                        color: "success.contrastText",
-                      }}
-                    >
-                      <Typography
-                        variant="body2"
-                        sx={{ whiteSpace: "pre-wrap" }}
-                      >
-                        {toolResponses[index].content}
-                      </Typography>
-                    </Box>
-                  </>
-                )}
+  // Component for rendering message parts in order
+  const MessageContent = ({ parts, isError, isStreaming }) => {
+    return (
+      <Box
+        sx={{
+          overflow: "hidden",
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
+          maxWidth: "100%",
+        }}
+      >
+        {parts.map((part, index) => {
+          if (part.type === "text") {
+            return (
+              <Box key={index}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={markdownComponents}
+                  style={{
+                    color: isError ? "error.main" : "inherit",
+                    fontStyle: isStreaming ? "italic" : "normal",
+                  }}
+                >
+                  {part.content}
+                </ReactMarkdown>
               </Box>
-            </AccordionDetails>
-          </Accordion>
-        ))}
+            );
+          } else if (part.type === "thinking") {
+            return <ThinkingDisplay key={index} thinking={part} />;
+          } else if (part.type === "tool_call") {
+            // Find corresponding tool response if it exists
+            const nextResponseIndex = parts.findIndex(
+              (p, i) => i > index && p.type === "tool_response"
+            );
+            const toolResponse =
+              nextResponseIndex !== -1 ? parts[nextResponseIndex] : null;
+
+            return (
+              <ToolCallDisplay
+                key={index}
+                toolCall={part}
+                toolResponse={toolResponse}
+              />
+            );
+          }
+          // tool_response parts are handled by tool_call parts, so skip them here
+          return null;
+        })}
       </Box>
     );
   };
@@ -1090,15 +1381,21 @@ const ChatPage = () => {
               <List sx={{ p: 0 }}>
                 {Array.isArray(currentChatMessages)
                   ? currentChatMessages.map((message, index) => {
-                      // Process tool calls for assistant messages
-                      const processedMessage =
+                      // Process content parts for assistant messages
+                      const contentParts =
                         message && message.role === "assistant"
-                          ? processToolCalls(message.content || '')
-                          : {
-                              content: message ? message.content || '' : '',
-                              toolCalls: [],
-                              toolResponses: [],
-                            };
+                          ? processContentParts(
+                              message.content || "",
+                              message.isStreaming,
+                              message.isInThinkingBlock,
+                              message.isInToolCallBlock
+                            )
+                          : [
+                              {
+                                type: "text",
+                                content: message ? message.content || "" : "",
+                              },
+                            ];
 
                       return (
                         <ListItem
@@ -1121,71 +1418,48 @@ const ChatPage = () => {
                             )}
                           </Avatar>
                           <Box sx={{ flexGrow: 1 }}>
-                            {/* Render tool calls if present */}
-                            {processedMessage.toolCalls.length > 0 && (
-                              <ToolCallDisplay
-                                toolCalls={processedMessage.toolCalls}
-                                toolResponses={processedMessage.toolResponses}
+                            {/* Render the message content with proper sequence */}
+                            {message.role === "assistant" ? (
+                              <MessageContent
+                                parts={contentParts}
+                                isError={message.isError}
+                                isStreaming={message.isStreaming}
                               />
-                            )}
-
-                            {/* Render the main message content */}
-                            {processedMessage.content &&
-                              (message.role === "assistant" ? (
-                                <Box
-                                  sx={{
-                                    overflow: "hidden",
-                                    wordBreak: "break-word",
-                                    overflowWrap: "break-word",
-                                    maxWidth: "100%",
-                                  }}
-                                >
-                                  <ReactMarkdown
-                                    remarkPlugins={[remarkMath]}
-                                    rehypePlugins={[rehypeKatex]}
-                                    components={markdownComponents}
-                                    style={{
-                                      color: message && message.isError
-                                        ? "error.main"
-                                        : "inherit",
-                                      fontStyle: message && message.isStreaming
-                                        ? "italic"
-                                        : "normal",
-                                    }}
-                                  >
-                                    {processedMessage.content}
-                                  </ReactMarkdown>
-                                </Box>
-                              ) : (
-                                <Typography
-                                  variant="body1"
-                                  sx={{
-                                    color: message && message.isError
+                            ) : (
+                              <Typography
+                                variant="body1"
+                                sx={{
+                                  color:
+                                    message && message.isError
                                       ? "error.main"
                                       : "inherit",
-                                    fontStyle: message && message.isStreaming
+                                  fontStyle:
+                                    message && message.isStreaming
                                       ? "italic"
                                       : "normal",
-                                    whiteSpace: "pre-wrap",
-                                    wordBreak: "break-word",
-                                    overflowWrap: "break-word",
-                                  }}
-                                >
-                                  {processedMessage.content}
-                                </Typography>
-                              ))}
+                                  whiteSpace: "pre-wrap",
+                                  wordBreak: "break-word",
+                                  overflowWrap: "break-word",
+                                }}
+                              >
+                                {contentParts[0]?.content || ""}
+                              </Typography>
+                            )}
 
                             <Typography
                               variant="caption"
                               color="text.secondary"
                             >
-                              {message.tokens_per_second && typeof message.tokens_per_second === 'number'
+                              {message.tokens_per_second &&
+                              typeof message.tokens_per_second === "number"
                                 ? `${message.tokens_per_second.toFixed(
                                     1
                                   )} tokens/sec`
-                                : message.timestamp ? new Date(
+                                : message.timestamp
+                                ? new Date(
                                     message.timestamp
-                                  ).toLocaleTimeString() : ''}
+                                  ).toLocaleTimeString()
+                                : ""}
                             </Typography>
                           </Box>
                         </ListItem>

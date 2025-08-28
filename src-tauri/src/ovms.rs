@@ -961,6 +961,7 @@ pub fn generate_ovms_graph(model_dir: &PathBuf, model_id: &str) -> Result<(), St
     let detokenizer_name = xml_files.iter().find(|name| name.contains("detokenizer"));
 
     // Generate graph.pbtxt content based on model type
+    let cache_dir = format!("{}/.ovms_cache", model_dir.to_string_lossy().replace('\\', "/"));
     let graph_content = if tokenizer_name.is_some() && detokenizer_name.is_some() {
         if model_name == "bge-reranker-base-int8-ov" {
             format!(
@@ -1014,8 +1015,7 @@ node {{
             }}"#
             )
         } else if model_name.ends_with("cw-ov") {
-            format!(
-                r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
+            format!(r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
                 output_stream: "HTTP_RESPONSE_PAYLOAD:output"
 
                 node: {{
@@ -1033,7 +1033,7 @@ node {{
                 node_options: {{
                     [type.googleapis.com / mediapipe.LLMCalculatorOptions]: {{
                         models_path: "./",
-                        plugin_config: '{{}}',
+                        plugin_config: '{{"CACHE_DIR": "{}"}}',
                         enable_prefix_caching: false,
                         cache_size: 2,
                         max_num_seqs: 256,
@@ -1051,11 +1051,9 @@ node {{
                     }}
                 }}
                 }}
-            "#
-            )
+            "#, cache_dir)
         } else {
-            format!(
-                r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
+            format!(r#"input_stream: "HTTP_REQUEST_PAYLOAD:input"
                 output_stream: "HTTP_RESPONSE_PAYLOAD:output"
 
                 node: {{
@@ -1073,10 +1071,11 @@ node {{
                 node_options: {{
                     [type.googleapis.com / mediapipe.LLMCalculatorOptions]: {{
                         models_path: "./",
-                        plugin_config: '{{}}',
+                        plugin_config: '{{"CACHE_DIR": "{}"}}',
                         enable_prefix_caching: false,
                         cache_size: 2,
                         max_num_seqs: 256,
+                        max_num_batched_tokens: 8192,
                         device: "GPU",
                     }}
                 }}
@@ -1091,8 +1090,7 @@ node {{
                     }}
                 }}
                 }}
-            "#
-            )
+            "#, cache_dir)
         }
     } else {
         format!(
