@@ -37,7 +37,7 @@ struct ModelInfo {
 }
 
 const OVMS_DOWNLOAD_URL: &str =
-    "https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_windows_python_off.zip";
+    "https://github.com/openvinotoolkit/model_server/releases/download/v2025.3/ovms_windows_python_off.zip";
 const OVMS_ZIP_FILE: &str = "ovms_windows_python_off.zip";
 
 // Global OVMS process management
@@ -579,7 +579,85 @@ pub fn is_ovms_present(app_handle: Option<&AppHandle>) -> bool {
     let ovms_exe = get_ovms_exe_path(app_handle);
     info!(ovms_path = %ovms_exe.display(), "Checking for OVMS");
 
-    ovms_exe.exists() && ovms_exe.is_file()
+    if !ovms_exe.exists() || !ovms_exe.is_file() {
+        return false;
+    }
+
+    // Check OVMS version
+    match check_ovms_version(&ovms_exe) {
+        Ok(is_valid) => {
+            if !is_valid {
+                // Version is too low, delete the OVMS folder
+                let ovms_dir = get_ovms_dir(app_handle);
+                if let Err(e) = fs::remove_dir_all(&ovms_dir) {
+                    warn!(error = %e, ovms_dir = %ovms_dir.display(), "Failed to remove outdated OVMS directory");
+                } else {
+                    info!(ovms_dir = %ovms_dir.display(), "Removed outdated OVMS directory");
+                }
+                return false;
+            }
+            true
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to check OVMS version");
+            false
+        }
+    }
+}
+
+fn check_ovms_version(ovms_exe: &PathBuf) -> Result<bool, String> {
+    let mut cmd = Command::new(ovms_exe);
+    cmd.arg("--version");
+
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd.output().map_err(|e| format!("Failed to execute ovms --version: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("OVMS --version command failed with status: {}", output.status));
+    }
+
+    let version_output = String::from_utf8_lossy(&output.stdout);
+    info!(version_output = %version_output.trim(), "OVMS version output");
+
+    // Parse version from output like "OpenVINO Model Server 2025.3.0.6e2e910d"
+    let required_version = (2025, 3, 0);
+
+    for line in version_output.lines() {
+        if line.starts_with("OpenVINO Model Server") {
+            // Extract version string after "OpenVINO Model Server "
+            if let Some(version_str) = line.strip_prefix("OpenVINO Model Server ") {
+                // Parse version like "2025.3.0.6e2e910d" - take only the numeric part before any suffix
+                let version_parts: Vec<&str> = version_str.split('.').collect();
+                if version_parts.len() >= 3 {
+                    // Parse major.minor.patch
+                    let major: u32 = version_parts[0].parse().map_err(|_| "Invalid major version")?;
+                    let minor: u32 = version_parts[1].parse().map_err(|_| "Invalid minor version")?;
+
+                    // For patch, only take numeric part before any non-numeric characters
+                    let patch_str = version_parts[2];
+                    let patch_numeric: String = patch_str
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
+                    let patch: u32 = patch_numeric.parse().map_err(|_| "Invalid patch version")?;
+
+                    let current_version = (major, minor, patch);
+                    info!(current = ?current_version, required = ?required_version, "Comparing OVMS versions");
+
+                    // Return true if current version >= required version
+                    return Ok(current_version >= required_version);
+                }
+            }
+        }
+    }
+
+    Err("Could not parse OVMS version from output".to_string())
 }
 
 #[tauri::command]
