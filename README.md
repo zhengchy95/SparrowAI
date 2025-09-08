@@ -4,7 +4,7 @@
   <p align="center">
     <strong>A powerful, privacy-first AI chat application</strong>
     <br />
-    Built with Tauri, React, and OpenVINO Model Server(OVMS) for lightning-fast local AI inference
+    Built with Tauri, React, and OpenVINO Model Server(OVMS) for lightning-fast local AI inference on Intel AIPC
     <br />
     <br />
     <a href="#-quick-start"><strong>Get Started »</strong></a>
@@ -37,7 +37,6 @@ SparrowAI is a modern desktop application that brings powerful AI capabilities d
 - **⚡ Optimized Performance** - Powered by Intel OpenVINO for maximum efficiency
 - **🧠 RAG Support** - Upload documents for context-aware conversations
 - **🎨 Modern Interface** - Beautiful Material-UI design with dark/light themes
-- **📱 Cross-Platform** - Works seamlessly on Windows
 
 ## ✨ Features
 
